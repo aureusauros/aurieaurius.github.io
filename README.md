@@ -2,4 +2,4 @@
 
 ## Tools
 
-- [Glass Block Video](glass/) — puts a refractive glass-block texture over a video, image or webcam feed and exports it as MP4/WebM, all in the browser.
+- [Glass Block Video](glass/) — generates looping videos of light on black refracted through wave glass blocks, exported as MP4 in the browser.
