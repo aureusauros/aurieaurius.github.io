@@ -13,7 +13,9 @@
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
     font:13px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-  .app{display:grid;grid-template-columns:1fr 340px;height:100vh}
+  [hidden]{display:none!important}
+  :root{color-scheme:dark}
+  .app{display:grid;grid-template-columns:1fr 340px;height:100%}
   .stage{position:relative;display:flex;align-items:center;justify-content:center;padding:20px;min-width:0;min-height:0;
     background:radial-gradient(circle at 50% 40%,#1a1c20,#0b0c0d 70%)}
   .stage canvas{max-width:100%;max-height:100%;box-shadow:0 20px 60px rgba(0,0,0,.6);border-radius:4px;background:#000}
@@ -107,6 +109,7 @@
     <div class="export">
       <button id="snap">Save PNG</button>
       <button id="rec" class="primary">Export video</button>
+      <button id="resave" hidden>Save last export again</button>
     </div>
   </aside>
 </div>
@@ -606,12 +609,8 @@ async function startRecording(){
   mr.onstop = () => {
     const type = mime.split(';')[0];
     const blob = new Blob(chunks, {type});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `glass-${Date.now()}.${type.includes('mp4')?'mp4':'webm'}`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setStatus(`Saved ${(blob.size/1048576).toFixed(1)} MB ${a.download}`);
     endRecordingUI();
+    offerFile(blob, `glass-${Date.now()}.${type.includes('mp4')?'mp4':'webm'}`);
   };
   rec = {mr, isVideo, start: performance.now(), dur: isVideo ? video.duration : P.duration};
 
@@ -650,9 +649,31 @@ function updateRecProgress(){
   $('status').innerHTML = `<span class="rec-dot"></span>Recording ${t.toFixed(1)} / ${rec.dur.toFixed(1)}s`;
 }
 $('rec').onclick = () => rec ? stopRecording() : startRecording();
-$('snap').onclick = () => canvas.toBlob(b => {
-  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `glass-${Date.now()}.png`; a.click();
-}, 'image/png');
+$('snap').onclick = () => canvas.toBlob(b => offerFile(b, `glass-${Date.now()}.png`), 'image/png');
+
+// Inside a claude.ai artifact, files go through the viewer's save prompt; standalone, a normal download link.
+let lastExport = null;
+async function offerFile(blob, filename){
+  lastExport = {blob, filename};
+  const mb = (blob.size/1048576).toFixed(1);
+  let dl = null;
+  if (window.claude && window.claude.use){ try { dl = await window.claude.use('downloads'); } catch(e){} }
+  if (dl){
+    $('resave').hidden = false;
+    try { await dl.save({filename, data: blob}); setStatus(`Saved ${filename} (${mb} MB)`); }
+    catch(err){
+      setStatus(err && err.code === 'declined' ? 'Save cancelled. Use "Save last export again" to retry.'
+        : `Could not save the file (${err && (err.code || err.message)}).`);
+    }
+  } else {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setStatus(`Saved ${filename} (${mb} MB)`);
+  }
+}
+$('resave').onclick = () => { if (lastExport) offerFile(lastExport.blob, lastExport.filename); };
+if (window.claude) $('cam').hidden = true; // camera is not available inside the artifact viewer
 
 /* ---------------- go ---------------- */
 buildControls();
