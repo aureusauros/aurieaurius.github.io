@@ -99,6 +99,7 @@
     </div>
 
     <div class="block" id="grp-glass"><h2>Glass</h2></div>
+    <div class="block" id="grp-block"><h2>Wave blocks</h2><div class="note" style="margin:-4px 0 6px">Used by the Wave glass blocks pattern.</div></div>
     <div class="block" id="grp-imperf"><h2>Imperfection</h2></div>
     <div class="block" id="grp-light"><h2>Light &amp; surface</h2></div>
     <div class="block" id="grp-cover"><h2>Coverage</h2></div>
@@ -120,19 +121,28 @@
 'use strict';
 
 /* ---------------- parameters ---------------- */
-const SHAPES = ['Pillow blocks','Pyramid prisms','Dome lens','Reeded vertical','Reeded horizontal','Bevelled tiles','Diamond facets','Bubbles'];
+const SHAPES = ['Pillow blocks','Pyramid prisms','Dome lens','Reeded vertical','Reeded horizontal','Bevelled tiles','Diamond facets','Bubbles','Wave glass blocks'];
 const MASKS  = ['Full frame','Left side','Right side','Top','Bottom','Vertical band','Circle'];
 const SIZES  = {source:'Match source','1080x1920':'9:16 — 1080×1920','1080x1350':'4:5 — 1080×1350','1080x1080':'1:1 — 1080×1080','1920x1080':'16:9 — 1920×1080','720x1280':'9:16 — 720×1280'};
 
 const SCHEMA = [
   // group, key, label, type, min, max, step, default
   ['glass','shape','Pattern','select',SHAPES,1],
-  ['glass','cell','Block size',  'range',4,200,1,30],
+  ['glass','cell','Block size',  'range',4,400,1,30],
   ['glass','angle','Rotation',   'range',-90,90,1,0],
   ['glass','zoom','Lens scale',  'range',-1.5,2,0.01,0.3],
   ['glass','refract','Refraction','range',-2,2,0.01,0.55],
   ['glass','frost','Frost blur', 'range',0,24,0.1,0],
   ['glass','chroma','Dispersion','range',0,0.6,0.005,0.08],
+
+  ['block','gap','Mortar width','range',0,0.3,0.002,0.06],
+  ['block','grout','Mortar colour','color','#1b1d1f'],
+  ['block','rim','Rim width',    'range',0.01,0.4,0.005,0.12],
+  ['block','wave','Wave depth',  'range',0,4,0.01,2.4],
+  ['block','waveScale','Wave size','range',0.5,8,0.05,1.2],
+  ['block','waveTwist','Swirl',  'range',0,3,0.01,1.2],
+  ['block','crease','Sharp folds','range',0,1,0.01,0.25],
+  ['block','moldVar','Mould variation','range',0,1,0.01,0.12],
 
   ['imperf','warp','Grid wobble', 'range',0,0.6,0.005,0.2],
   ['imperf','warpScale','Wobble size','range',0.5,10,0.1,3.5],
@@ -179,7 +189,13 @@ SCHEMA.forEach(s => { DEFAULTS[s[1]] = s[s.length-1]; });
 const P = Object.assign({}, DEFAULTS);
 
 const PRESETS = {
-  'Glass blocks': {},
+  'Wave blocks': {shape:8, cell:170, zoom:0.95, refract:0.9, bump:0.7, shade:0.3, highlight:1.0, shine:45, react:0.85,
+                  edgeW:0.05, edgeDark:0.55, chroma:0.04, milk:0.03, warp:0.008, jitter:0.08, texture:0, soften:0, mask:0},
+  'Wave blocks, pale mortar': {shape:8, cell:200, gap:0.1, grout:'#cfc6b4', zoom:0.95, refract:1.0, bump:0.7, shade:0.3, highlight:1.1,
+                  shine:45, react:0.8, edgeW:0.06, edgeDark:0.45, chroma:0.03, milk:0.08, moldVar:0, warp:0, jitter:0.04, texture:0, soften:0, mask:0},
+  'Wave blocks, half': {shape:8, cell:150, zoom:0.95, refract:0.9, bump:0.7, shade:0.3, highlight:1.0, shine:45, react:0.85,
+                  edgeW:0.05, edgeDark:0.55, chroma:0.04, milk:0.03, warp:0.008, jitter:0.08, texture:0, soften:0, mask:1, split:0.55, feather:0.002, ragged:0},
+  'Small prisms': {},
   'Pillow': {shape:0, zoom:0.2, refract:0.9, bump:0.8, edgeW:0.08, edgeDark:0.2},
   'Full pane': {mask:0, cell:32, zoom:0.3, refract:0.5, frost:1.2},
   'Reeded': {shape:3, cell:22, zoom:-0.4, refract:0.3, frost:0.4, chroma:0.12, highlight:0.9, edgeW:0.05, edgeDark:0.2, mask:0},
@@ -275,8 +291,9 @@ uniform sampler2D uTex;
 uniform vec2 uRes, uCover, uOffset;
 uniform float uCell, uAngle, uZoom, uRefract, uBump, uFrost, uChroma, uHighlight, uShine, uShade, uReact,
               uLight, uEdgeW, uEdgeDark, uMilk, uGrain, uTime, uSplit, uFeather, uRagged, uBandW, uSnap,
-              uWarp, uWarpScale, uJitter, uTexture, uTexScale, uSoftK;
-uniform vec3 uTint;
+              uWarp, uWarpScale, uJitter, uTexture, uTexScale, uSoftK,
+              uGap, uRim, uWave, uWaveScale, uWaveTwist, uCrease, uMoldVar;
+uniform vec3 uTint, uGrout;
 uniform int uShape, uMask, uAA;
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
@@ -288,6 +305,19 @@ float fbm(vec2 p){
   float a = 0.5, s = 0.0;
   for(int i=0;i<3;i++){ s += a*vnoise(p); p = p*2.03 + vec2(1.7,9.2); a *= 0.5; }
   return s;
+}
+float waveH(vec2 b, vec2 seed){
+  // cast block: rounded rim around the edge, flowing wave pattern pressed into the face
+  vec2 d = clamp(min(b, 1.0-b), 0.0, 1.0);
+  vec2 t = clamp(d/max(uRim, 0.001), 0.0, 1.0);
+  vec2 rv = sqrt(1.0 - (1.0-t)*(1.0-t));
+  float rim = rv.x*rv.y;
+  vec2 p = b*uWaveScale + seed;
+  vec2 w = vec2(fbm(p + vec2(3.1,7.7)), fbm(p + vec2(8.3,2.8)));
+  float n = fbm(p + (w-0.5)*uWaveTwist*3.0);
+  n = mix(n, 1.0 - abs(2.0*n - 1.0), uCrease);
+  float inner = smoothstep(0.0, 1.0, min(t.x, t.y));
+  return rim*0.5 + n*uWave*0.35*inner;
 }
 float sabs(float x){ return sqrt(x*x + uSoftK); }
 float smax2(float a, float b){ return 0.5*(a + b + sqrt((a-b)*(a-b) + uSoftK)); }
@@ -334,9 +364,30 @@ vec4 shadeAt(vec2 p){
   vec2 cell = floor(g), f = fract(g), c = f*2.0 - 1.0;
   vec2 axis = uShape==3 ? vec2(1.0,0.0) : (uShape==4 ? vec2(0.0,1.0) : vec2(1.0));
 
-  float e = 0.015;
-  vec2 grad = vec2(height(c+vec2(e,0.))-height(c-vec2(e,0.)),
-                   height(c+vec2(0.,e))-height(c-vec2(0.,e))) / (2.0*e);
+  vec2 grad;
+  float ed8 = 0.0;
+  if(uShape==8){
+    float g8 = uGap*0.5;
+    vec2 b = (f - g8)/(1.0 - uGap);
+    if(b.x < 0.0 || b.y < 0.0 || b.x > 1.0 || b.y > 1.0){
+      // mortar between blocks: opaque, slightly gritty, shadowed next to the glass
+      vec2 cg = p + R*((0.5-f)*uCell);
+      float mg = maskAt((uSnap>0.5 ? cg : p)/uRes, hash(cell + 3.1));
+      float dE = length(b - clamp(b, 0.0, 1.0)) / max(g8/(1.0-uGap), 1e-4);
+      vec3 gc = uGrout*(0.85 + 0.3*vnoise(q*0.45) + 0.15*(hash(floor(q*0.7))-0.5))*(0.7 + 0.3*smoothstep(0.0, 0.7, dE));
+      return vec4(gc, mg);
+    }
+    vec2 seed = (vec2(hash(cell + 1.7), hash(cell + 9.2)) - 0.5) * uMoldVar * 12.0;
+    float e8 = 0.004;
+    float h0 = waveH(b, seed);
+    grad = vec2(waveH(b + vec2(e8,0.), seed) - h0, waveH(b + vec2(0.,e8), seed) - h0) / e8 * 0.25;
+    grad /= 1.0 + length(grad)*0.12;
+    ed8 = max(abs(b.x*2.0-1.0), abs(b.y*2.0-1.0));
+  } else {
+    float e = 0.015;
+    grad = vec2(height(c+vec2(e,0.))-height(c-vec2(e,0.)),
+                height(c+vec2(0.,e))-height(c-vec2(0.,e))) / (2.0*e);
+  }
 
   // each block sets slightly differently: its own tilt and lens strength
   vec2 bid = cell*axis;
@@ -382,7 +433,7 @@ vec4 shadeAt(vec2 p){
   col += spec*uHighlight*react*sCol;
 
   // seams between blocks
-  float ed = uShape==3 ? abs(c.x) : (uShape==4 ? abs(c.y) : (uShape==7 ? min(length(c),1.0) : max(abs(c.x),abs(c.y))));
+  float ed = uShape==8 ? ed8 : uShape==3 ? abs(c.x) : (uShape==4 ? abs(c.y) : (uShape==7 ? min(length(c),1.0) : max(abs(c.x),abs(c.y))));
   float em = uEdgeW > 0.0 ? smoothstep(1.0-uEdgeW, 1.0, ed) : 0.0;
   col *= 1.0 - em*uEdgeDark*mix(1.0, 0.4+lum, uReact*0.5);
 
@@ -430,7 +481,8 @@ gl.enableVertexAttribArray(aLoc); gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, fals
 const U = {};
 ['uTex','uRes','uCover','uOffset','uCell','uAngle','uZoom','uRefract','uBump','uFrost','uChroma','uHighlight','uShine','uShade','uReact',
  'uLight','uEdgeW','uEdgeDark','uMilk','uGrain','uTime','uSplit','uFeather','uRagged','uBandW','uSnap',
- 'uWarp','uWarpScale','uJitter','uTexture','uTexScale','uSoftK','uTint','uShape','uMask','uAA']
+ 'uWarp','uWarpScale','uJitter','uTexture','uTexScale','uSoftK',
+ 'uGap','uRim','uWave','uWaveScale','uWaveTwist','uCrease','uMoldVar','uGrout','uTint','uShape','uMask','uAA']
  .forEach(n => U[n] = gl.getUniformLocation(prog, n));
 
 const tex = gl.createTexture();
@@ -601,6 +653,14 @@ function frame(now){
   gl.uniform1f(U.uTexture, P.texture);
   gl.uniform1f(U.uTexScale, P.texScale);
   gl.uniform1f(U.uSoftK, P.soften*P.soften*0.15);
+  gl.uniform1f(U.uGap, P.gap);
+  gl.uniform1f(U.uRim, P.rim);
+  gl.uniform1f(U.uWave, P.wave);
+  gl.uniform1f(U.uWaveScale, P.waveScale);
+  gl.uniform1f(U.uWaveTwist, P.waveTwist);
+  gl.uniform1f(U.uCrease, P.crease);
+  gl.uniform1f(U.uMoldVar, P.moldVar);
+  gl.uniform3fv(U.uGrout, hexToRgb(P.grout));
   gl.uniform3fv(U.uTint, hexToRgb(P.tint));
   gl.uniform1i(U.uShape, P.shape);
   gl.uniform1i(U.uMask, P.mask);
@@ -724,6 +784,7 @@ if (window.claude) $('cam').hidden = true; // camera is not available inside the
 
 /* ---------------- go ---------------- */
 buildControls();
+applyPreset('Wave blocks', document.querySelector('#presets button'));
 updateFormatNote();
 source.el = demo;
 drawDemo(0);
