@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glass Block Video</title>
 <meta name="description" content="Generate looping videos of light on black, refracted through wave glass blocks.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yellowtail&family=Monoton&family=Inter:wght@800&display=swap">
 <style>
   :root{
     --bg:#0e0f11; --panel:#16181b; --panel2:#1d2024; --line:#2a2e33; --text:#e9eaec; --dim:#9aa0a7;
@@ -47,7 +50,7 @@
   .ctl output{font-variant-numeric:tabular-nums;color:var(--dim);font-size:11px;text-align:right}
   .ctl.sel{grid-template-columns:100px 1fr}
   input[type=range]{width:100%;accent-color:var(--accent)}
-  select,input[type=color],input[type=number]{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:inherit}
+  select,input[type=color],input[type=number],input[type=text]{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:inherit}
   input[type=color]{padding:0 2px;height:26px}
   input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;margin:0}
   .export{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:6px;flex-wrap:wrap}
@@ -114,19 +117,29 @@
 'use strict';
 
 /* ---------------- parameters ---------------- */
-const STYLES = ['Glowing orbs','Light bars','Sweeping beams','Halo rings','Ribbons'];
+const STYLES = ['Laser fan','Moving heads','Laser web','Neon shapes','Neon sign','Mirror ball','LED equalizer','Red room'];
+const PALETTES = {custom:'Custom', mc:'Magenta + cyan', red:'Red room', uv:'UV', acid:'Acid', ice:'Ice', sunset:'Sunset'};
+const PALETTE_COLS = {mc:['#ff2bd6','#22e4ff'], red:['#ff1a3c','#ff6a1a'], uv:['#8a2bff','#ff3df2'], acid:['#7dff3a','#00ffd0'], ice:['#ffffff','#4f9dff'], sunset:['#ffb347','#ff2d6f']};
+const FONTS = {script:'Neon script', retro:'Retro lines', sans:'Bold outline'};
 const MORTAR = ['None (blocks flush)','Dark','Pale'];
 const SIZES  = {'1080x1920':'9:16 — 1080×1920','1080x1350':'4:5 — 1080×1350','1080x1080':'1:1 — 1080×1080','1920x1080':'16:9 — 1920×1080','3840x2160':'16:9 — 3840×2160 (4K)','720x1280':'9:16 — 720×1280'};
 
 const SCHEMA = [
   // group, key, label, type, ...
-  ['light','style','Light','select',STYLES,3],
-  ['light','colA','Colour 1','color','#ffffff'],
-  ['light','colB','Colour 2','color','#6f8dff'],
-  ['light','count','Number',      'range',1,8,1,3],
-  ['light','lsize','Light size',  'range',0.2,3,0.01,1],
-  ['light','bright','Brightness', 'range',0.1,4,0.01,1.4],
-  ['light','speed','Speed',       'range',1,6,1,1],
+  ['light','style','Light','select',STYLES,0],
+  ['light','text','Sign text','text','AFTER DARK'],
+  ['light','font','Sign font','select',FONTS,'script'],
+  ['light','palette','Palette','select',PALETTES,'mc'],
+  ['light','colA','Colour 1','color','#ff2bd6'],
+  ['light','colB','Colour 2','color','#22e4ff'],
+  ['light','count','Amount',      'range',1,12,1,6],
+  ['light','lsize','Size / spread','range',0.2,3,0.01,1],
+  ['light','bright','Brightness', 'range',0.1,4,0.01,1.3],
+  ['light','haze','Haze',         'range',0,1,0.01,0.6],
+  ['light','bpm','BPM',           'range',60,180,1,124],
+  ['light','strobe','Strobe',     'range',0,1,0.01,0.35],
+  ['light','flicker','Flicker',   'range',0,1,0.01,0.3],
+  ['light','speed','Movement',    'range',1,6,1,1],
   ['light','bg','Background','color','#000000'],
 
   ['glass','cell','Block size',   'range',40,600,1,220],
@@ -193,19 +206,22 @@ function buildControls(){
       wrap.style.gridTemplateColumns = '100px auto';
     } else if (type === 'color'){
       el = document.createElement('input'); el.type='color';
-      el.addEventListener('input', () => { P[key] = el.value; presetOff(); });
+      el.addEventListener('input', () => { P[key] = el.value; presetOff(); if (key==='colA'||key==='colB') setParam('palette','custom',true); });
+    } else if (type === 'text'){
+      el = document.createElement('input'); el.type='text'; el.maxLength = 40;
+      el.addEventListener('input', () => { P[key] = el.value; onParamChange(key); });
     } else if (type === 'number'){
       el = document.createElement('input'); el.type='number'; el.min=s[4]; el.max=s[5]; el.step=s[6];
       el.addEventListener('change', () => { P[key] = Math.max(s[4], Math.min(s[5], +el.value||DEFAULTS[key])); el.value=P[key]; });
     }
     el.id = 'c_'+key;
     wrap.appendChild(el); if (out) wrap.appendChild(out);
-    if (key==='gap') wrap.id = 'row_gap';
+    wrap.id = 'row_' + key;
     inputs[key] = {el,out,s};
     $('grp-'+g).insertBefore(wrap, g==='out' ? $('fmtNote') : null);
   });
   Object.keys(P).forEach(k => setParam(k, P[k], true));
-  onParamChange('mortar');
+  onParamChange('mortar'); onParamChange('style');
 }
 function setParam(key, v, silent){
   const c = inputs[key]; if (!c) return;
@@ -217,13 +233,16 @@ function setParam(key, v, silent){
 function presetOff(){ $('preset').classList.remove('on'); }
 $('preset').onclick = () => {
   Object.keys(DEFAULTS).forEach(k => { if (!OUTPUT_KEYS.includes(k)) setParam(k, DEFAULTS[k], true); });
-  onParamChange('mortar');
+  onParamChange('mortar'); onParamChange('style'); drawSign();
   $('preset').classList.add('on');
 };
 function onParamChange(key){
   if (key==='size') resize();
   if (key==='format') updateFormatNote();
   if (key==='mortar') $('row_gap').hidden = P.mortar === 0;
+  if (key==='style'){ $('row_text').hidden = $('row_font').hidden = P.style !== 4; }
+  if (key==='palette' && PALETTE_COLS[P.palette]){ setParam('colA', PALETTE_COLS[P.palette][0], true); setParam('colB', PALETTE_COLS[P.palette][1], true); }
+  if (key==='text' || key==='font') drawSign();
 }
 
 /* ---------------- WebGL ---------------- */
@@ -237,53 +256,153 @@ const VS = `attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}`;
 const FS_LIGHT = `
 precision highp float;
 uniform vec2 uRes;
-uniform float uPhase, uSize, uBright, uCount;
+uniform float uPhase, uBeat, uBeatN, uSize, uBright, uCount, uHaze, uStrobe, uFlicker, uTextAsp;
 uniform int uStyle;
 uniform vec3 uColA, uColB, uBg;
-float h(float n){ return fract(sin(n*127.1 + 3.7)*43758.5453); }
-vec3 pal(float k){ return mix(uColA, uColB, k); }
+uniform sampler2D uText;
+#define TAU 6.2831853
+float h1(float n){ return fract(sin(n*127.1 + 3.7)*43758.5453); }
+float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+float vn(vec2 p){
+  vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
+  return mix(mix(h2(i), h2(i+vec2(1.,0.)), u.x), mix(h2(i+vec2(0.,1.)), h2(i+vec2(1.,1.)), u.x), u.y);
+}
+float fbm(vec2 p){ float a = 0.5, s = 0.0; for(int i=0;i<4;i++){ s += a*vn(p); p = p*2.07 + vec2(5.2,1.3); a *= 0.5; } return s; }
+vec3 pal(float k){ return mix(uColA, uColB, clamp(k, 0.0, 1.0)); }
+vec2 rot(vec2 v, float a){ float c = cos(a), s = sin(a); return vec2(c*v.x - s*v.y, s*v.x + c*v.y); }
+// thin bright core + soft bloom, the look of a laser or neon tube
+float glow(float d, float w){ return exp(-d*d/(w*w))*1.8 + 0.12*exp(-d/(w*10.0)); }
+// neon flicker: random dropouts, repeating exactly over the loop
+float flick(float id){
+  float slot = uBeatN*6.0 + floor(uBeat*6.0);
+  float r = h1(slot*1.37 + id*7.1);
+  return r < uFlicker*0.35 ? 0.12 + 0.3*h1(slot + id*3.3) : 1.0;
+}
+float sdTri(vec2 p, float r){
+  const float k = 1.7320508;
+  p.x = abs(p.x) - r; p.y = p.y + r/k;
+  if(p.x + k*p.y > 0.0) p = vec2(p.x - k*p.y, -k*p.x - p.y)/2.0;
+  p.x -= clamp(p.x, -2.0*r, 0.0);
+  return -length(p)*sign(p.y);
+}
+float sdBox(vec2 p, vec2 b, float rr){ vec2 q = abs(p) - b + rr; return length(max(q,0.0)) + min(max(q.x,q.y),0.0) - rr; }
+float txt(vec2 uv, float bias){ return texture2D(uText, uv, bias).a; }
+
 void main(){
   vec2 p = (gl_FragCoord.xy - 0.5*uRes)/uRes.y;
-  float asp = uRes.x/uRes.y, a = uPhase;
+  float asp = uRes.x/uRes.y, a = uPhase, n = uCount;
+  float hz = mix(1.0, 0.2 + 2.2*pow(fbm(p*2.4 + vec2(cos(a), sin(a))*0.4), 2.0), uHaze);
+  float pls = exp(-uBeat*5.0);
+  float strobe = mix(1.0, 0.2 + 1.6*pls, uStrobe);
   vec3 c = vec3(0.0);
-  for(int i=0;i<8;i++){
-    float fi = float(i);
-    if(fi >= uCount) break;
-    float k1 = 1.0 + floor(h(fi+1.0)*2.0), k2 = 1.0 + floor(h(fi+2.0)*2.0);
-    float ph1 = h(fi+3.0)*6.2831, ph2 = h(fi+4.0)*6.2831;
-    vec3 col = pal(uCount > 1.0 ? fi/(uCount-1.0) : 0.0);
-    if(uStyle==0){
-      vec2 pos = vec2(sin(a*k1+ph1)*0.36*asp, cos(a*k2+ph2)*0.34);
-      float r = uSize*0.05*(0.6 + 0.8*h(fi+5.0));
-      float d = length(p-pos);
-      c += col*(exp(-d*d/(r*r))*1.6 + 0.06*exp(-d/(r*1.2)));
-    } else if(uStyle==1){
-      float tilt = -0.5 + h(fi+6.0)*0.35;
-      float y = p.y*cos(tilt) - p.x*sin(tilt);
-      float cy = sin(a*k1+ph1)*0.42;
-      float w = uSize*0.007*(0.5 + h(fi+7.0));
-      float d = abs(y-cy);
-      float along = 0.55 + 0.45*sin(p.x*2.2 + a*k2 + ph2);
-      c += col*(exp(-d*d/(w*w))*1.8 + 0.05*exp(-d/(w*5.0)))*along;
-    } else if(uStyle==2){
-      float cx = sin(a*k1+ph1)*0.42*asp;
-      float w = uSize*0.01*(0.5 + h(fi+7.0));
-      float d = abs(p.x - cx + p.y*0.15*sin(a*k2+ph2));
-      float fade = exp(-p.y*p.y*1.2);
-      c += col*(exp(-d*d/(w*w))*1.8 + 0.05*exp(-d/(w*5.0)))*fade;
-    } else if(uStyle==3){
-      vec2 ctr = vec2(sin(a*k1+ph1), cos(a*k2+ph2))*0.08;
-      float r = uSize*(0.1 + 0.07*fi)*(1.0 + 0.12*sin(a*k2+ph1));
-      float w = uSize*0.005*(0.6 + h(fi+7.0));
-      float d = abs(length(p-ctr) - r);
-      c += col*(exp(-d*d/(w*w))*1.8 + 0.05*exp(-d/(w*5.0)));
-    } else {
-      float y = p.y - (fi/max(uCount-1.0,1.0) - 0.5)*0.5
-              - 0.12*sin(p.x*(2.0+h(fi+8.0)*2.0) + a*k1 + ph1)
-              - 0.05*sin(p.x*5.0 - a*k2 + ph2);
-      float w = uSize*0.008*(0.5 + h(fi+7.0));
-      c += col*(exp(-y*y/(w*w))*1.6 + 0.05*exp(-abs(y)/(w*5.0)));
+
+  if(uStyle==0){                       // laser fan: two fixtures, crossing sweeps
+    for(int f=0; f<2; f++){
+      float ff = float(f), sd = ff*2.0 - 1.0;
+      vec2 o = vec2(sd*0.34*asp, 0.53);
+      float sweep = sin(a + ff*3.14159)*0.5;
+      for(int i=0;i<12;i++){
+        float fi = float(i); if(fi >= n) break;
+        float t = n > 1.0 ? fi/(n-1.0) - 0.5 : 0.0;
+        float ang = -1.5708 - sd*0.3 + t*0.95*uSize + sweep;
+        vec2 dir = vec2(cos(ang), sin(ang)), v = p - o;
+        float along = dot(v, dir);
+        if(along > 0.0){
+          float d = abs(v.x*dir.y - v.y*dir.x);
+          c += pal(mod(fi + ff, 2.0)) * glow(d, 0.0016 + along*0.0016) * (0.35 + 0.65*hz) * exp(-along*0.35);
+        }
+      }
+      c += pal(ff) * 2.0*exp(-dot(p-o, p-o)*1500.0);
     }
+    c *= strobe;
+  } else if(uStyle==1){                // moving heads: swinging spotlight cones
+    for(int i=0;i<12;i++){
+      float fi = float(i); if(fi >= n) break;
+      float x = n > 1.0 ? (fi/(n-1.0) - 0.5)*0.85*asp : 0.0;
+      vec2 o = vec2(x, 0.56), v = p - o;
+      float ang = -1.5708 + sin(a*(1.0 + floor(h1(fi)*2.0)) + h1(fi+3.0)*TAU)*0.6;
+      vec2 dir = vec2(cos(ang), sin(ang));
+      float along = dot(v, dir);
+      vec3 col = pal(mod(fi, 2.0));
+      if(along > 0.0){
+        float ca = abs(v.x*dir.y - v.y*dir.x)/along, hw = 0.085*uSize;
+        float cone = smoothstep(hw, hw*0.3, ca);
+        float rim = exp(-pow((ca - hw*0.8)/(hw*0.12), 2.0));
+        c += col * (cone*0.9 + rim*0.7) * hz * (1.0/(0.35 + along*1.2));
+      }
+      c += col * 2.5*exp(-dot(v,v)*2500.0);
+    }
+    c *= strobe;
+  } else if(uStyle==2){                // laser web: crossing lines that drift and pivot
+    for(int i=0;i<12;i++){
+      float fi = float(i); if(fi >= n) break;
+      float th = fi*3.14159/n + 0.5*sin(a + h1(fi)*TAU);
+      float off = sin(a*(1.0 + floor(h1(fi+1.0)*2.0)) + h1(fi+2.0)*TAU)*0.32;
+      float d = abs(dot(p, vec2(cos(th), sin(th))) - off);
+      c += pal(n > 1.0 ? fi/(n-1.0) : 0.0) * glow(d, 0.0018) * (0.35 + 0.65*hz);
+    }
+    c *= strobe;
+  } else if(uStyle==3){                // neon shapes
+    vec2 q = rot(p, sin(a)*0.15);
+    for(int i=0;i<6;i++){
+      float fi = float(i); if(fi >= min(n, 6.0)) break;
+      float r = uSize*(0.1 + fi*0.065), k = mod(fi, 3.0), sd;
+      if(k < 0.5) sd = abs(length(q) - r);
+      else if(k < 1.5) sd = abs(sdTri(rot(q, 3.14159), r*0.95));
+      else sd = abs(sdBox(rot(q, 0.785), vec2(r*0.72), r*0.12));
+      vec3 col = pal(mod(fi, 2.0));
+      c += (col*glow(sd, 0.004) + vec3(1.0)*exp(-sd*sd/3.2e-6)*0.7 + col*0.07*exp(-sd/0.06)) * flick(fi);
+    }
+    c *= mix(1.0, 0.65 + 0.6*pls, uStrobe);
+  } else if(uStyle==4){                // neon sign from your text
+    float wb = min(1.0*asp, 1.6)*uSize;
+    vec2 uv = vec2(p.x/wb + 0.5, 0.5 - p.y*uTextAsp/wb);
+    if(uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0){
+      float core = txt(uv, 0.0);
+      float g = txt(uv, 2.0)*0.35 + txt(uv, 3.5)*0.35 + txt(uv, 5.0)*0.4 + txt(uv, 6.5)*0.35;
+      vec3 col = pal(uv.x);
+      float fl = flick(floor(uv.x*6.0));
+      c += (col*g + mix(col, vec3(1.0), 0.35)*core*1.1) * fl;
+    }
+    c += pal(0.5)*0.06*exp(-p.y*p.y*6.0)*hz;
+    c *= mix(1.0, 0.7 + 0.5*pls, uStrobe);
+  } else if(uStyle==5){                // mirror ball sparkles
+    for(int i=0;i<144;i++){
+      float fi = float(i); if(fi >= n*12.0) break;
+      float lat = (h1(fi+1.0) - 0.5)*2.4;
+      float lon = h1(fi+2.0)*TAU + a;
+      float front = cos(lon);
+      if(front <= 0.0) continue;
+      vec2 pos = vec2(sin(lon)*cos(lat)*0.55*asp, sin(lat)*0.46);
+      float r = 0.012*uSize*(0.6 + 0.8*h1(fi+3.0));
+      vec2 dv = p - pos;
+      float d = length(dv);
+      float tw = 0.5 + 0.5*sin(a*3.0 + fi*1.7);
+      float star = exp(-abs(dv.x)/(r*7.0))*exp(-dv.y*dv.y/(r*r*0.03)) + exp(-abs(dv.y)/(r*7.0))*exp(-dv.x*dv.x/(r*r*0.03));
+      c += pal(h1(fi+4.0)) * (exp(-d*d/(r*r))*3.5 + 0.2*exp(-d/(r*5.0)) + star*1.4*tw*tw) * front * tw;
+    }
+    c *= (0.7 + 0.3*hz) * strobe;
+  } else if(uStyle==6){                // LED equalizer
+    float bars = n*3.0;
+    float bx = (p.x/asp + 0.5)*bars, bi = floor(bx), fx = fract(bx);
+    float y = p.y + 0.5;
+    float level = (0.2 + 0.7*h1(bi*3.1 + uBeatN*7.7)) * (0.45 + 0.55*exp(-uBeat*2.5)) * uSize;
+    float seg = fract(y*36.0);
+    float cell = smoothstep(0.06, 0.16, fx)*smoothstep(0.94, 0.84, fx)*smoothstep(0.1, 0.25, seg)*smoothstep(0.95, 0.8, seg);
+    vec3 col = pal(clamp(y/0.9, 0.0, 1.0));
+    c += col * step(y, level) * cell * 1.6;
+    c += col * 0.25 * exp(-abs(y - level)*30.0) * cell;
+    c *= mix(1.0, 0.6 + 0.6*pls, uStrobe);
+  } else {                             // red room: slow breathing washes
+    for(int i=0;i<4;i++){
+      float fi = float(i); if(fi >= min(n, 4.0)) break;
+      vec2 o = vec2((mod(fi, 2.0)*2.0 - 1.0)*0.5*asp, (floor(fi/2.0)*2.0 - 1.0)*0.55);
+      float d = length(p - o);
+      float breathe = 0.55 + 0.45*sin(a + fi*1.7);
+      c += pal(mod(fi, 2.0)) * exp(-d*d/(0.09*uSize)) * breathe * hz * 0.9;
+    }
+    c += pal(0.0) * glow(abs(p.y + 0.38), 0.0025) * 0.6 * flick(9.0);
+    c *= mix(1.0, 0.55 + 0.8*pls, uStrobe);
   }
   c *= uBright;
   c = 1.0 - exp(-c*1.2);
@@ -422,6 +541,41 @@ function makeTex(){
   return t;
 }
 const mediaTex = makeTex();
+// neon sign text, drawn once into a mipmapped texture so the shader can blur it for glow
+const signCanvas = document.createElement('canvas'); signCanvas.width = 2048; signCanvas.height = 1024;
+const signTex = makeTex();
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+const FONT_CSS = {script:'"Yellowtail", "Brush Script MT", cursive', retro:'"Monoton", "Impact", sans-serif', sans:'800 1px "Inter", "Arial Black", sans-serif'};
+function drawSign(){
+  const g = signCanvas.getContext('2d'), Wc = signCanvas.width, Hc = signCanvas.height;
+  g.clearRect(0,0,Wc,Hc);
+  const text = (P.text || ' ').trim() || ' ';
+  // in a portrait frame, stack the words so the sign can be bigger
+  const words = text.split(/\s+/);
+  const portrait = canvas.height > canvas.width;
+  const lines = portrait && words.length > 1
+    ? (words.length > 3 ? [words.slice(0, Math.ceil(words.length/2)).join(' '), words.slice(Math.ceil(words.length/2)).join(' ')] : words)
+    : [text];
+  const fam = FONT_CSS[P.font] || FONT_CSS.script;
+  const fontAt = sz => P.font==='sans' ? fam.replace('1px', sz+'px') : `${sz}px ${fam}`;
+  let size = 300; g.font = fontAt(size);
+  const w = Math.max(...lines.map(l => g.measureText(l).width));
+  size = Math.max(40, Math.min(Hc*0.8/lines.length/1.15, size * (Wc*0.88) / Math.max(w,1)));
+  g.font = fontAt(size); g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+  const lh = size*1.15;
+  lines.forEach((l, i) => {
+    const y = Hc/2 + (i - (lines.length-1)/2)*lh;
+    if (P.font === 'sans'){ g.lineWidth = Math.max(4, size*0.045); g.lineJoin = 'round'; g.strokeText(l, Wc/2, y); }
+    else g.fillText(l, Wc/2, y + size*0.05);
+  });
+  gl.bindTexture(gl.TEXTURE_2D, signTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, signCanvas);
+  gl.generateMipmap(gl.TEXTURE_2D);
+}
+if (document.fonts && document.fonts.load){
+  Promise.all(['300px Yellowtail','300px Monoton','800 300px Inter'].map(f => document.fonts.load(f).catch(()=>{}))).then(() => drawSign());
+}
 const lightTex = makeTex();
 const fbo = gl.createFramebuffer();
 gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -478,6 +632,7 @@ function resize(){
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, lightTex, 0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  if (typeof drawSign === 'function' && signCanvas) drawSign();
   const sa = source.kind==='light' ? W/H : source.w/source.h, oa = W/H;
   cover = sa > oa ? [oa/sa, 1] : [1, sa/oa];
 }
@@ -513,7 +668,19 @@ function render(){
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.viewport(0,0,W,H);
     gl.uniform2f(U.uRes, W, H);
-    gl.uniform1f(U.uPhase, (clock / P.duration) * P.speed * Math.PI * 2);
+    const loop = clock / P.duration;
+    const beats = Math.max(1, Math.round(P.duration * P.bpm / 60));   // whole beats per loop keeps it seamless
+    const beatPos = loop * beats;
+    gl.uniform1f(U.uPhase, loop * P.speed * Math.PI * 2);
+    gl.uniform1f(U.uBeat, beatPos - Math.floor(beatPos));
+    gl.uniform1f(U.uBeatN, Math.floor(beatPos) % beats);
+    gl.uniform1f(U.uHaze, P.haze);
+    gl.uniform1f(U.uStrobe, P.strobe);
+    gl.uniform1f(U.uFlicker, P.flicker);
+    gl.uniform1f(U.uTextAsp, signCanvas.width / signCanvas.height);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, signTex);
+    gl.uniform1i(U.uText, 1);
+    gl.activeTexture(gl.TEXTURE0);
     gl.uniform1f(U.uSize, P.lsize);
     gl.uniform1f(U.uBright, P.bright);
     gl.uniform1f(U.uCount, P.count);
@@ -722,6 +889,7 @@ $('resave').onclick = () => { if (lastExport) offerFile(lastExport.blob, lastExp
 
 /* ---------------- go ---------------- */
 buildControls();
+drawSign();
 updateFormatNote();
 resize();
 requestAnimationFrame(frame);
