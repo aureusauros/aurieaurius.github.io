@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glass Block Video</title>
 <meta name="description" content="Generate looping videos of light on black, refracted through wave glass blocks.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yellowtail&family=Monoton&family=Inter:wght@800&display=swap">
 <style>
   :root{
     --bg:#0e0f11; --panel:#16181b; --panel2:#1d2024; --line:#2a2e33; --text:#e9eaec; --dim:#9aa0a7;
@@ -117,29 +114,24 @@
 'use strict';
 
 /* ---------------- parameters ---------------- */
-const STYLES = ['Laser fan','Moving heads','Laser web','Neon shapes','Neon sign','Mirror ball','LED equalizer','Red room'];
-const PALETTES = {custom:'Custom', mc:'Magenta + cyan', red:'Red room', uv:'UV', acid:'Acid', ice:'Ice', sunset:'Sunset'};
-const PALETTE_COLS = {mc:['#ff2bd6','#22e4ff'], red:['#ff1a3c','#ff6a1a'], uv:['#8a2bff','#ff3df2'], acid:['#7dff3a','#00ffd0'], ice:['#ffffff','#4f9dff'], sunset:['#ffb347','#ff2d6f']};
-const FONTS = {script:'Neon script', retro:'Retro lines', sans:'Bold outline'};
+const STYLES = ['Light sweep','Point light','Strip lights','Horizon glow','Window','Soft fields','Light trail'];
+const PALETTES = {white:'White', warm:'Warm white', cool:'Cool white', amber:'Amber', red:'Red', violet:'Violet', custom:'Custom'};
+const PALETTE_COLS = {white:['#ffffff','#ffffff'], warm:['#fff3e3','#ffc98f'], cool:['#ffffff','#d2e2ff'], amber:['#ffc06b','#ff7a1f'], red:['#ff3346','#ff8a5c'], violet:['#c9a6ff','#7a4dff']};
 const MORTAR = ['None (blocks flush)','Dark','Pale'];
 const SIZES  = {'1080x1920':'9:16 — 1080×1920','1080x1350':'4:5 — 1080×1350','1080x1080':'1:1 — 1080×1080','1920x1080':'16:9 — 1920×1080','3840x2160':'16:9 — 3840×2160 (4K)','720x1280':'9:16 — 720×1280'};
 
 const SCHEMA = [
   // group, key, label, type, ...
   ['light','style','Light','select',STYLES,0],
-  ['light','text','Sign text','text','AFTER DARK'],
-  ['light','font','Sign font','select',FONTS,'script'],
-  ['light','palette','Palette','select',PALETTES,'mc'],
-  ['light','colA','Colour 1','color','#ff2bd6'],
-  ['light','colB','Colour 2','color','#22e4ff'],
-  ['light','count','Amount',      'range',1,12,1,6],
-  ['light','lsize','Size / spread','range',0.2,3,0.01,1],
-  ['light','bright','Brightness', 'range',0.1,4,0.01,1.3],
-  ['light','haze','Haze',         'range',0,1,0.01,0.6],
-  ['light','bpm','BPM',           'range',60,180,1,124],
-  ['light','strobe','Strobe',     'range',0,1,0.01,0.35],
-  ['light','flicker','Flicker',   'range',0,1,0.01,0.3],
-  ['light','speed','Movement',    'range',1,6,1,1],
+  ['light','palette','Colour','select',PALETTES,'white'],
+  ['light','colA','Colour 1','color','#ffffff'],
+  ['light','colB','Colour 2','color','#ffffff'],
+  ['light','count','Number',       'range',1,4,1,1],
+  ['light','lsize','Size',         'range',0.3,3,0.01,1],
+  ['light','soft','Edge softness', 'range',0,1,0.01,0.2],
+  ['light','angle','Direction',    'range',-90,90,1,0],
+  ['light','bright','Brightness',  'range',0.2,4,0.01,1.6],
+  ['light','speed','Speed',        'range',1,4,1,1],
   ['light','bg','Background','color','#000000'],
 
   ['glass','cell','Block size',   'range',40,600,1,220],
@@ -233,16 +225,15 @@ function setParam(key, v, silent){
 function presetOff(){ $('preset').classList.remove('on'); }
 $('preset').onclick = () => {
   Object.keys(DEFAULTS).forEach(k => { if (!OUTPUT_KEYS.includes(k)) setParam(k, DEFAULTS[k], true); });
-  onParamChange('mortar'); onParamChange('style'); drawSign();
+  onParamChange('mortar'); onParamChange('style');
   $('preset').classList.add('on');
 };
 function onParamChange(key){
   if (key==='size') resize();
   if (key==='format') updateFormatNote();
   if (key==='mortar') $('row_gap').hidden = P.mortar === 0;
-  if (key==='style'){ $('row_text').hidden = $('row_font').hidden = P.style !== 4; }
+  if (key==='style'){ $('row_angle').hidden = ![0,2,3,4].includes(P.style); $('row_count').hidden = P.style === 3; }
   if (key==='palette' && PALETTE_COLS[P.palette]){ setParam('colA', PALETTE_COLS[P.palette][0], true); setParam('colB', PALETTE_COLS[P.palette][1], true); }
-  if (key==='text' || key==='font') drawSign();
 }
 
 /* ---------------- WebGL ---------------- */
@@ -256,156 +247,97 @@ const VS = `attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}`;
 const FS_LIGHT = `
 precision highp float;
 uniform vec2 uRes;
-uniform float uPhase, uBeat, uBeatN, uSize, uBright, uCount, uHaze, uStrobe, uFlicker, uTextAsp;
+uniform float uPhase, uLoop, uSize, uSoft, uAngle, uBright, uCount;
 uniform int uStyle;
 uniform vec3 uColA, uColB, uBg;
-uniform sampler2D uText;
 #define TAU 6.2831853
-float h1(float n){ return fract(sin(n*127.1 + 3.7)*43758.5453); }
-float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
-float vn(vec2 p){
-  vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
-  return mix(mix(h2(i), h2(i+vec2(1.,0.)), u.x), mix(h2(i+vec2(0.,1.)), h2(i+vec2(1.,1.)), u.x), u.y);
-}
-float fbm(vec2 p){ float a = 0.5, s = 0.0; for(int i=0;i<4;i++){ s += a*vn(p); p = p*2.07 + vec2(5.2,1.3); a *= 0.5; } return s; }
 vec3 pal(float k){ return mix(uColA, uColB, clamp(k, 0.0, 1.0)); }
-vec2 rot(vec2 v, float a){ float c = cos(a), s = sin(a); return vec2(c*v.x - s*v.y, s*v.x + c*v.y); }
-// thin bright core + soft bloom, the look of a laser or neon tube
-float glow(float d, float w){ return exp(-d*d/(w*w))*1.8 + 0.12*exp(-d/(w*10.0)); }
-// neon flicker: random dropouts, repeating exactly over the loop
-float flick(float id){
-  float slot = uBeatN*6.0 + floor(uBeat*6.0);
-  float r = h1(slot*1.37 + id*7.1);
-  return r < uFlicker*0.35 ? 0.12 + 0.3*h1(slot + id*3.3) : 1.0;
-}
-float sdTri(vec2 p, float r){
-  const float k = 1.7320508;
-  p.x = abs(p.x) - r; p.y = p.y + r/k;
-  if(p.x + k*p.y > 0.0) p = vec2(p.x - k*p.y, -k*p.x - p.y)/2.0;
-  p.x -= clamp(p.x, -2.0*r, 0.0);
-  return -length(p)*sign(p.y);
-}
-float sdBox(vec2 p, vec2 b, float rr){ vec2 q = abs(p) - b + rr; return length(max(q,0.0)) + min(max(q.x,q.y),0.0) - rr; }
-float txt(vec2 uv, float bias){ return texture2D(uText, uv, bias).a; }
+float ease(float x){ return x*x*(3.0 - 2.0*x); }
+// hard-edged source with adjustable softness: hard light shows the glass texture best
+float edge(float d, float hw){ float e = max(hw*uSoft*2.0, 0.0015); return 1.0 - smoothstep(hw - e*0.5, hw + e*0.5, d); }
+float bloom(float d, float hw){ return exp(-max(d - hw, 0.0)/(0.015 + hw*1.2))*0.16; }
+float sdBox(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
+float sdSeg(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba)/dot(ba, ba), 0.0, 1.0); return length(pa - ba*h); }
+vec2 trailPos(float t, float asp){ return vec2(sin(t)*0.38*asp, sin(2.0*t + 0.7)*0.3); }
 
 void main(){
   vec2 p = (gl_FragCoord.xy - 0.5*uRes)/uRes.y;
   float asp = uRes.x/uRes.y, a = uPhase, n = uCount;
-  float hz = mix(1.0, 0.2 + 2.2*pow(fbm(p*2.4 + vec2(cos(a), sin(a))*0.4), 2.0), uHaze);
-  float pls = exp(-uBeat*5.0);
-  float strobe = mix(1.0, 0.2 + 1.6*pls, uStrobe);
+  vec2 dir = vec2(cos(uAngle), sin(uAngle));
+  float x = dot(p, dir), y = dot(p, vec2(-dir.y, dir.x));
+  float span = 0.5*(abs(dir.x)*asp + abs(dir.y));      // half the frame, measured along dir
   vec3 c = vec3(0.0);
 
-  if(uStyle==0){                       // laser fan: two fixtures, crossing sweeps
-    for(int f=0; f<2; f++){
-      float ff = float(f), sd = ff*2.0 - 1.0;
-      vec2 o = vec2(sd*0.34*asp, 0.53);
-      float sweep = sin(a + ff*3.14159)*0.5;
-      for(int i=0;i<12;i++){
-        float fi = float(i); if(fi >= n) break;
-        float t = n > 1.0 ? fi/(n-1.0) - 0.5 : 0.0;
-        float ang = -1.5708 - sd*0.3 + t*0.95*uSize + sweep;
-        vec2 dir = vec2(cos(ang), sin(ang)), v = p - o;
-        float along = dot(v, dir);
-        if(along > 0.0){
-          float d = abs(v.x*dir.y - v.y*dir.x);
-          c += pal(mod(fi + ff, 2.0)) * glow(d, 0.0016 + along*0.0016) * (0.35 + 0.65*hz) * exp(-along*0.35);
-        }
-      }
-      c += pal(ff) * 2.0*exp(-dot(p-o, p-o)*1500.0);
-    }
-    c *= strobe;
-  } else if(uStyle==1){                // moving heads: swinging spotlight cones
-    for(int i=0;i<12;i++){
-      float fi = float(i); if(fi >= n) break;
-      float x = n > 1.0 ? (fi/(n-1.0) - 0.5)*0.85*asp : 0.0;
-      vec2 o = vec2(x, 0.56), v = p - o;
-      float ang = -1.5708 + sin(a*(1.0 + floor(h1(fi)*2.0)) + h1(fi+3.0)*TAU)*0.6;
-      vec2 dir = vec2(cos(ang), sin(ang));
-      float along = dot(v, dir);
-      vec3 col = pal(mod(fi, 2.0));
-      if(along > 0.0){
-        float ca = abs(v.x*dir.y - v.y*dir.x)/along, hw = 0.085*uSize;
-        float cone = smoothstep(hw, hw*0.3, ca);
-        float rim = exp(-pow((ca - hw*0.8)/(hw*0.12), 2.0));
-        c += col * (cone*0.9 + rim*0.7) * hz * (1.0/(0.35 + along*1.2));
-      }
-      c += col * 2.5*exp(-dot(v,v)*2500.0);
-    }
-    c *= strobe;
-  } else if(uStyle==2){                // laser web: crossing lines that drift and pivot
-    for(int i=0;i<12;i++){
-      float fi = float(i); if(fi >= n) break;
-      float th = fi*3.14159/n + 0.5*sin(a + h1(fi)*TAU);
-      float off = sin(a*(1.0 + floor(h1(fi+1.0)*2.0)) + h1(fi+2.0)*TAU)*0.32;
-      float d = abs(dot(p, vec2(cos(th), sin(th))) - off);
-      c += pal(n > 1.0 ? fi/(n-1.0) : 0.0) * glow(d, 0.0018) * (0.35 + 0.65*hz);
-    }
-    c *= strobe;
-  } else if(uStyle==3){                // neon shapes
-    vec2 q = rot(p, sin(a)*0.15);
-    for(int i=0;i<6;i++){
-      float fi = float(i); if(fi >= min(n, 6.0)) break;
-      float r = uSize*(0.1 + fi*0.065), k = mod(fi, 3.0), sd;
-      if(k < 0.5) sd = abs(length(q) - r);
-      else if(k < 1.5) sd = abs(sdTri(rot(q, 3.14159), r*0.95));
-      else sd = abs(sdBox(rot(q, 0.785), vec2(r*0.72), r*0.12));
-      vec3 col = pal(mod(fi, 2.0));
-      c += (col*glow(sd, 0.004) + vec3(1.0)*exp(-sd*sd/3.2e-6)*0.7 + col*0.07*exp(-sd/0.06)) * flick(fi);
-    }
-    c *= mix(1.0, 0.65 + 0.6*pls, uStrobe);
-  } else if(uStyle==4){                // neon sign from your text
-    float wb = min(1.0*asp, 1.6)*uSize;
-    vec2 uv = vec2(p.x/wb + 0.5, 0.5 - p.y*uTextAsp/wb);
-    if(uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0){
-      float core = txt(uv, 0.0);
-      float g = txt(uv, 2.0)*0.35 + txt(uv, 3.5)*0.35 + txt(uv, 5.0)*0.4 + txt(uv, 6.5)*0.35;
-      vec3 col = pal(uv.x);
-      float fl = flick(floor(uv.x*6.0));
-      c += (col*g + mix(col, vec3(1.0), 0.35)*core*1.1) * fl;
-    }
-    c += pal(0.5)*0.06*exp(-p.y*p.y*6.0)*hz;
-    c *= mix(1.0, 0.7 + 0.5*pls, uStrobe);
-  } else if(uStyle==5){                // mirror ball sparkles
-    for(int i=0;i<144;i++){
-      float fi = float(i); if(fi >= n*12.0) break;
-      float lat = (h1(fi+1.0) - 0.5)*2.4;
-      float lon = h1(fi+2.0)*TAU + a;
-      float front = cos(lon);
-      if(front <= 0.0) continue;
-      vec2 pos = vec2(sin(lon)*cos(lat)*0.55*asp, sin(lat)*0.46);
-      float r = 0.012*uSize*(0.6 + 0.8*h1(fi+3.0));
-      vec2 dv = p - pos;
-      float d = length(dv);
-      float tw = 0.5 + 0.5*sin(a*3.0 + fi*1.7);
-      float star = exp(-abs(dv.x)/(r*7.0))*exp(-dv.y*dv.y/(r*r*0.03)) + exp(-abs(dv.y)/(r*7.0))*exp(-dv.x*dv.x/(r*r*0.03));
-      c += pal(h1(fi+4.0)) * (exp(-d*d/(r*r))*3.5 + 0.2*exp(-d/(r*5.0)) + star*1.4*tw*tw) * front * tw;
-    }
-    c *= (0.7 + 0.3*hz) * strobe;
-  } else if(uStyle==6){                // LED equalizer
-    float bars = n*3.0;
-    float bx = (p.x/asp + 0.5)*bars, bi = floor(bx), fx = fract(bx);
-    float y = p.y + 0.5;
-    float level = (0.2 + 0.7*h1(bi*3.1 + uBeatN*7.7)) * (0.45 + 0.55*exp(-uBeat*2.5)) * uSize;
-    float seg = fract(y*36.0);
-    float cell = smoothstep(0.06, 0.16, fx)*smoothstep(0.94, 0.84, fx)*smoothstep(0.1, 0.25, seg)*smoothstep(0.95, 0.8, seg);
-    vec3 col = pal(clamp(y/0.9, 0.0, 1.0));
-    c += col * step(y, level) * cell * 1.6;
-    c += col * 0.25 * exp(-abs(y - level)*30.0) * cell;
-    c *= mix(1.0, 0.6 + 0.6*pls, uStrobe);
-  } else {                             // red room: slow breathing washes
+  if(uStyle==0){                         // light sweep: a strip light travelling across, like a product reveal
     for(int i=0;i<4;i++){
-      float fi = float(i); if(fi >= min(n, 4.0)) break;
-      vec2 o = vec2((mod(fi, 2.0)*2.0 - 1.0)*0.5*asp, (floor(fi/2.0)*2.0 - 1.0)*0.55);
-      float d = length(p - o);
-      float breathe = 0.55 + 0.45*sin(a + fi*1.7);
-      c += pal(mod(fi, 2.0)) * exp(-d*d/(0.09*uSize)) * breathe * hz * 0.9;
+      float fi = float(i); if(fi >= n) break;
+      float t = fract(uLoop + fi/n);
+      float pos = mix(-span - 0.25, span + 0.25, ease(t));
+      float hw = 0.03*uSize, d = abs(x - pos);
+      c += pal(n > 1.0 ? fi/(n-1.0) : 0.0) * (edge(d, hw) + bloom(d, hw)) * exp(-y*y*1.4);
     }
-    c += pal(0.0) * glow(abs(p.y + 0.38), 0.0025) * 0.6 * flick(9.0);
-    c *= mix(1.0, 0.55 + 0.8*pls, uStrobe);
+  } else if(uStyle==1){                  // point light: one small bright source behind the wall
+    for(int i=0;i<3;i++){
+      float fi = float(i); if(fi >= min(n, 3.0)) break;
+      vec2 pos = vec2(sin(a + fi*2.1)*0.28*asp, sin(2.0*a + fi*1.3)*0.16 + cos(a + fi)*0.06);
+      float r = 0.022*uSize, d = length(p - pos);
+      c += pal(n > 1.0 ? fi/(n-1.0) : 0.0) * (edge(d, r)*2.5 + pow(r*5.0/(d + r*5.0), 2.0)*0.9);
+    }
+  } else if(uStyle==2){                  // strip lights: stripboxes with a linear fade along their length
+    for(int i=0;i<4;i++){
+      float fi = float(i); if(fi >= n) break;
+      float off = (n > 1.0 ? (fi/(n-1.0) - 0.5)*1.2*span : 0.0) + sin(a + fi*1.9)*0.05;
+      float hw = 0.012*uSize, d = abs(x - off);
+      float yy = y - sin(a + fi*2.7)*0.06, len = 0.34;
+      float lf = smoothstep(len, len - 0.06, abs(yy));
+      float grad = clamp(0.6 + 0.4*yy/len, 0.15, 1.0);
+      c += pal(n > 1.0 ? fi/(n-1.0) : 0.0) * (edge(d, hw) + bloom(d, hw)) * lf * grad;
+    }
+  } else if(uStyle==3){                  // horizon glow: a bright edge with a long gradient falling away below it
+    float h0 = sin(a)*0.16 - 0.04, dv = y - h0;
+    float below = dv < 0.0 ? exp(dv*7.0/uSize)*0.45 : 0.0;
+    float line = edge(abs(dv), 0.004*uSize) + bloom(abs(dv), 0.004*uSize);
+    c += (pal(0.0)*line*1.3 + pal(1.0)*below) * (0.55 + 0.45*exp(-x*x*1.2));
+  } else if(uStyle==4){                  // window: a bright pane of light with mullions, drifting slowly
+    vec2 ctr = vec2(sin(a)*0.16*asp, cos(a)*0.08);
+    vec2 q = vec2(dot(p - ctr, dir), dot(p - ctr, vec2(-dir.y, dir.x)));
+    vec2 hs = vec2(0.13, 0.21)*uSize;
+    float e = max(0.0015, uSoft*0.04);
+    float sd = sdBox(q, hs, 0.004);
+    float inside = 1.0 - smoothstep(-e, e, sd);
+    float panes = clamp(n, 1.0, 4.0);
+    float mx = fract((q.x + hs.x)/(2.0*hs.x)*panes);
+    float my = fract((q.y + hs.y)/(2.0*hs.y)*(panes > 2.0 ? 2.0 : 1.0));
+    float bw = 0.035/max(uSize, 0.3);
+    float bars = (panes > 1.0 ? smoothstep(0.0, bw, mx)*smoothstep(1.0, 1.0 - bw, mx) : 1.0)
+               * (panes > 2.0 ? smoothstep(0.0, bw*0.6, my)*smoothstep(1.0, 1.0 - bw*0.6, my) : 1.0);
+    float grad = 0.7 + 0.3*q.y/hs.y;
+    c += pal(0.5 - 0.5*q.y/hs.y) * (inside*bars*grad + bloom(max(sd, 0.0), 0.0)*1.5);
+  } else if(uStyle==5){                  // soft fields: large drifting pools of light
+    for(int i=0;i<5;i++){
+      float fi = float(i); if(fi >= n + 1.0) break;
+      vec2 pos = vec2(sin(a + fi*1.7)*0.3*asp, cos(a + fi*2.9)*0.28);
+      float r = 0.13*uSize*(0.7 + 0.15*fi), d = length(p - pos);
+      c += pal(mod(fi, 2.0)) * exp(-d*d/(r*r))*0.4;
+    }
+  } else {                               // light trail: a point of light drawing a fading line, like light painting
+    float m = 0.0;
+    vec2 prev = trailPos(a, asp);
+    float len = 2.8*(0.5 + 0.5*n/4.0);
+    for(int j=1;j<=48;j++){
+      float fj = float(j);
+      vec2 cur = trailPos(a - fj*len/48.0, asp);
+      float fade = pow(1.0 - fj/48.0, 1.1);
+      float w = 0.016*uSize*(0.35 + 0.65*fade);
+      float d = sdSeg(p, prev, cur);
+      m = max(m, (edge(d, w) + bloom(d, w)*0.6)*fade);
+      prev = cur;
+    }
+    float dh = length(p - trailPos(a, asp));
+    c += pal(0.0)*m*1.4 + pal(1.0)*(edge(dh, 0.014*uSize)*2.0 + pow(0.03*uSize/(dh + 0.03*uSize), 2.0)*0.7);
   }
   c *= uBright;
-  c = 1.0 - exp(-c*1.2);
+  c = 1.0 - exp(-c*1.3);
   gl_FragColor = vec4(uBg + c*(1.0 - uBg), 1.0);
 }`;
 
@@ -541,41 +473,6 @@ function makeTex(){
   return t;
 }
 const mediaTex = makeTex();
-// neon sign text, drawn once into a mipmapped texture so the shader can blur it for glow
-const signCanvas = document.createElement('canvas'); signCanvas.width = 2048; signCanvas.height = 1024;
-const signTex = makeTex();
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-const FONT_CSS = {script:'"Yellowtail", "Brush Script MT", cursive', retro:'"Monoton", "Impact", sans-serif', sans:'800 1px "Inter", "Arial Black", sans-serif'};
-function drawSign(){
-  const g = signCanvas.getContext('2d'), Wc = signCanvas.width, Hc = signCanvas.height;
-  g.clearRect(0,0,Wc,Hc);
-  const text = (P.text || ' ').trim() || ' ';
-  // in a portrait frame, stack the words so the sign can be bigger
-  const words = text.split(/\s+/);
-  const portrait = canvas.height > canvas.width;
-  const lines = portrait && words.length > 1
-    ? (words.length > 3 ? [words.slice(0, Math.ceil(words.length/2)).join(' '), words.slice(Math.ceil(words.length/2)).join(' ')] : words)
-    : [text];
-  const fam = FONT_CSS[P.font] || FONT_CSS.script;
-  const fontAt = sz => P.font==='sans' ? fam.replace('1px', sz+'px') : `${sz}px ${fam}`;
-  let size = 300; g.font = fontAt(size);
-  const w = Math.max(...lines.map(l => g.measureText(l).width));
-  size = Math.max(40, Math.min(Hc*0.8/lines.length/1.15, size * (Wc*0.88) / Math.max(w,1)));
-  g.font = fontAt(size); g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = '#fff'; g.strokeStyle = '#fff';
-  const lh = size*1.15;
-  lines.forEach((l, i) => {
-    const y = Hc/2 + (i - (lines.length-1)/2)*lh;
-    if (P.font === 'sans'){ g.lineWidth = Math.max(4, size*0.045); g.lineJoin = 'round'; g.strokeText(l, Wc/2, y); }
-    else g.fillText(l, Wc/2, y + size*0.05);
-  });
-  gl.bindTexture(gl.TEXTURE_2D, signTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, signCanvas);
-  gl.generateMipmap(gl.TEXTURE_2D);
-}
-if (document.fonts && document.fonts.load){
-  Promise.all(['300px Yellowtail','300px Monoton','800 300px Inter'].map(f => document.fonts.load(f).catch(()=>{}))).then(() => drawSign());
-}
 const lightTex = makeTex();
 const fbo = gl.createFramebuffer();
 gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -632,7 +529,6 @@ function resize(){
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, lightTex, 0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  if (typeof drawSign === 'function' && signCanvas) drawSign();
   const sa = source.kind==='light' ? W/H : source.w/source.h, oa = W/H;
   cover = sa > oa ? [oa/sa, 1] : [1, sa/oa];
 }
@@ -669,18 +565,10 @@ function render(){
     gl.viewport(0,0,W,H);
     gl.uniform2f(U.uRes, W, H);
     const loop = clock / P.duration;
-    const beats = Math.max(1, Math.round(P.duration * P.bpm / 60));   // whole beats per loop keeps it seamless
-    const beatPos = loop * beats;
     gl.uniform1f(U.uPhase, loop * P.speed * Math.PI * 2);
-    gl.uniform1f(U.uBeat, beatPos - Math.floor(beatPos));
-    gl.uniform1f(U.uBeatN, Math.floor(beatPos) % beats);
-    gl.uniform1f(U.uHaze, P.haze);
-    gl.uniform1f(U.uStrobe, P.strobe);
-    gl.uniform1f(U.uFlicker, P.flicker);
-    gl.uniform1f(U.uTextAsp, signCanvas.width / signCanvas.height);
-    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, signTex);
-    gl.uniform1i(U.uText, 1);
-    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1f(U.uLoop, (loop * P.speed) % 1);
+    gl.uniform1f(U.uSoft, P.soft);
+    gl.uniform1f(U.uAngle, P.angle * Math.PI / 180);
     gl.uniform1f(U.uSize, P.lsize);
     gl.uniform1f(U.uBright, P.bright);
     gl.uniform1f(U.uCount, P.count);
@@ -889,11 +777,10 @@ $('resave').onclick = () => { if (lastExport) offerFile(lastExport.blob, lastExp
 
 /* ---------------- go ---------------- */
 buildControls();
-drawSign();
 updateFormatNote();
 resize();
 requestAnimationFrame(frame);
-window.__glass = {P, setParam, loadFile};
+window.__glass = {P, setParam, loadFile, setTime: t => { clock = t; }};
 })();
 </script>
 </body>
