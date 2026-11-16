@@ -76,13 +76,13 @@
   <aside>
     <header>
       <h1>Glass Type</h1>
-      <p>Type set in cast wave glass, lit from behind on black. Upload your own font, then export a PNG or a looping video.</p>
+      <p>Each letter cast as one piece of wave glass, lit from behind on black. Upload your own font, then export a PNG or a looping video.</p>
     </header>
 
     <div class="block">
       <h2>Preset</h2>
       <div class="row">
-        <button id="preset" class="on">Wave blocks</button>
+        <button id="preset" class="on">Cast glass</button>
         <button id="playpause">Pause</button>
       </div>
     </div>
@@ -94,8 +94,7 @@
       <div class="note" id="fontNote" style="margin:0 0 6px">TTF, OTF, WOFF or WOFF2. Fonts stay in your browser.</div>
     </div>
     <div class="block" id="grp-light"><h2>Light</h2></div>
-    <div class="block" id="grp-glass"><h2>Wave blocks</h2></div>
-    <div class="block" id="grp-mortar"><h2>Mortar</h2></div>
+    <div class="block" id="grp-glass"><h2>Glass</h2></div>
     <div class="block" id="grp-shine"><h2>Reflections</h2></div>
     <div class="block" id="grp-out"><h2>Output</h2><div class="note" id="fmtNote"></div></div>
 
@@ -141,8 +140,8 @@ const SCHEMA = [
   ['text','tracking','Letter spacing','range',-100,400,1,0],
   ['text','leading','Line height','range',0.6,2,0.01,0.95],
   ['text','align','Align','select',{center:'Centre',left:'Left',right:'Right'},'center'],
-  ['text','bevel','Edge bevel','range',0,80,1,22],
-  ['text','bevelAmt','Bevel depth','range',0,3,0.01,1.2],
+  ['text','bevel','Rim width','range',4,160,1,24],
+  ['text','bevelAmt','Rim depth','range',0,3,0.01,1],
   ['text','edgeGlow','Edge glint','range',0,1.5,0.01,0.4],
   ['text','outLight','Light outside','range',0,1,0.01,0],
   ['light','style','Light','select',STYLES,5],
@@ -157,21 +156,15 @@ const SCHEMA = [
   ['light','speed','Speed',        'range',1,4,1,1],
   ['light','bg','Background','color','#000000'],
 
-  ['glass','blocks','Blocks in letters','check',true],
-  ['glass','cell','Block size',   'range',20,600,1,110],
+  ['glass','cell','Pattern scale','range',20,600,1,90],
   ['glass','wave','Wave depth',   'range',0,4,0.01,2.4],
   ['glass','waveScale','Wave size','range',0.5,6,0.05,1.2],
   ['glass','waveTwist','Swirl',   'range',0,3,0.01,1.2],
   ['glass','crease','Sharp folds','range',0,1,0.01,0.25],
-  ['glass','rim','Rim width',     'range',0.01,0.4,0.005,0.12],
   ['glass','refract','Refraction','range',0,2.5,0.01,0.9],
-  ['glass','zoom','Lens scale',   'range',-1,1.5,0.01,0.95],
-  ['glass','moldVar','Block variation','range',0,1,0.01,0.12],
   ['glass','chroma','Dispersion', 'range',0,0.4,0.005,0.05],
   ['glass','frost','Frost blur',  'range',0,16,0.1,0],
 
-  ['mortar','mortar','Mortar','select',MORTAR,0],
-  ['mortar','gap','Mortar width', 'range',0.005,0.3,0.002,0.06],
 
   ['shine','highlight','Glints',  'range',0,3,0.01,1.0],
   ['shine','shine','Gloss',       'range',2,200,1,45],
@@ -238,7 +231,7 @@ function buildControls(){
     $('grp-'+g).insertBefore(wrap, g==='out' ? $('fmtNote') : null);
   });
   Object.keys(P).forEach(k => setParam(k, P[k], true));
-  onParamChange('mortar'); onParamChange('style'); onParamChange('fit');
+  onParamChange('style'); onParamChange('fit');
 }
 function setParam(key, v, silent){
   const c = inputs[key]; if (!c) return;
@@ -250,13 +243,12 @@ function setParam(key, v, silent){
 function presetOff(){ $('preset').classList.remove('on'); }
 $('preset').onclick = () => {
   Object.keys(DEFAULTS).forEach(k => { if (!OUTPUT_KEYS.includes(k)) setParam(k, DEFAULTS[k], true); });
-  onParamChange('mortar'); onParamChange('style'); onParamChange('fit'); drawText();
+  onParamChange('style'); onParamChange('fit'); drawText();
   $('preset').classList.add('on');
 };
 function onParamChange(key){
   if (key==='size') resize();
   if (key==='format') updateFormatNote();
-  if (key==='mortar') $('row_gap').hidden = P.mortar === 0;
   if (key==='style'){ $('row_angle').hidden = ![0,2,3,4].includes(P.style); $('row_count').hidden = P.style === 3; }
   if (key==='fit') $('row_tsize').hidden = !!P.fit;
   if (key==='transparent') $('stage').classList.toggle('alpha', !!P.transparent);
@@ -374,12 +366,12 @@ const FS_GLASS = `
 precision highp float;
 uniform sampler2D uTex;
 uniform vec2 uRes, uCover;
-uniform float uFlip, uCell, uZoom, uRefract, uFrost, uChroma, uHighlight, uShine, uSheen, uReact,
-              uLight, uEdgeDark, uGrain, uTime, uGap, uRim, uWave, uWaveScale, uWaveTwist, uCrease, uMoldVar;
-uniform vec3 uGrout, uOutBg;
+uniform float uFlip, uCell, uRefract, uFrost, uChroma, uHighlight, uShine, uSheen, uReact,
+              uLight, uEdgeDark, uGrain, uTime, uWave, uWaveScale, uWaveTwist, uCrease;
+uniform vec3 uOutBg;
 uniform int uAA;
-uniform sampler2D uMask, uBev;
-uniform float uBlocks, uBevelPx, uBevelAmt, uOutLight, uTransparent, uEdgeGlow;
+uniform sampler2D uMask, uDist;
+uniform float uRimAmt, uOutLight, uTransparent, uEdgeGlow;
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 float vnoise(vec2 p){
@@ -397,20 +389,6 @@ vec3 src(vec2 px){
   if(uFlip > 0.5) uv.y = 1.0 - uv.y;
   return texture2D(uTex, uv).rgb;
 }
-// one block: rounded rim around the edge, flowing wave pattern pressed into the face
-float waveH(vec2 b, vec2 seed){
-  vec2 d = clamp(min(b, 1.0-b), 0.0, 1.0);
-  vec2 t = clamp(d/max(uRim, 0.001), 0.0, 1.0);
-  vec2 rv = sqrt(1.0 - (1.0-t)*(1.0-t));
-  float rim = rv.x*rv.y;
-  vec2 p = b*uWaveScale + seed;
-  vec2 w = vec2(fbm(p + vec2(3.1,7.7)), fbm(p + vec2(8.3,2.8)));
-  float n = fbm(p + (w-0.5)*uWaveTwist*3.0);
-  n = mix(n, 1.0 - abs(2.0*n - 1.0), uCrease);
-  float inner = smoothstep(0.0, 1.0, min(t.x, t.y));
-  return rim*0.5 + n*uWave*0.35*inner;
-}
-
 float waveN(vec2 p){
   vec2 w = vec2(fbm(p + vec2(3.1,7.7)), fbm(p + vec2(8.3,2.8)));
   float n = fbm(p + (w-0.5)*uWaveTwist*3.0);
@@ -418,7 +396,15 @@ float waveN(vec2 p){
   return n*uWave*0.35;
 }
 float mk(vec2 px){ return texture2D(uMask, clamp(px/uRes, 0.0, 1.0)).a; }
-float bv(vec2 px){ return texture2D(uBev, clamp(px/uRes, 0.0, 1.0)).a; }
+// distance into the letter from its outline, 0 at the edge and 1 at the full rim width
+float dist(vec2 px){ return texture2D(uDist, clamp(px/uRes, 0.0, 1.0)).a; }
+// each letter is one cast piece: a rounded rim that follows the outline, wave pattern pressed into the face
+float H(vec2 px){
+  float t = dist(px);
+  float rim = sqrt(1.0 - (1.0-t)*(1.0-t));
+  vec2 bc = (px - 0.5*uRes)/uCell*uWaveScale;
+  return rim*0.5*uRimAmt + waveN(bc)*smoothstep(0.0, 1.0, t);
+}
 
 vec4 shadeAt(vec2 p){
   vec3 outC = mix(uOutBg, src(p), uOutLight);
@@ -426,37 +412,11 @@ vec4 shadeAt(vec2 p){
   float m = mk(p);
   if(m < 0.002) return outside;
 
-  vec2 q = p - 0.5*uRes + 0.5*uCell;
-  vec2 cell = floor(q/uCell), f = fract(q/uCell);
-  vec2 grad, b = vec2(0.5);
-  vec2 off = vec2(0.0);
-  float e8 = 0.004;
-  if(uBlocks > 0.5){
-    float g8 = uGap*0.5;
-    b = (f - g8)/(1.0 - uGap);
-    if(b.x < 0.0 || b.y < 0.0 || b.x > 1.0 || b.y > 1.0){
-      float dE = length(b - clamp(b, 0.0, 1.0)) / max(g8/(1.0-uGap), 1e-4);
-      vec3 gc = uGrout*(0.85 + 0.3*vnoise(q*0.45) + 0.15*(hash(floor(q*0.7))-0.5))*(0.7 + 0.3*smoothstep(0.0, 0.7, dE));
-      return mix(outside, vec4(gc, 1.0), m);
-    }
-    vec2 seed = (vec2(hash(cell + 1.7), hash(cell + 9.2)) - 0.5) * uMoldVar * 12.0;
-    float h0 = waveH(b, seed);
-    grad = vec2(waveH(b + vec2(e8,0.), seed) - h0, waveH(b + vec2(0.,e8), seed) - h0) / e8 * 0.25;
-    grad /= 1.0 + length(grad)*0.12;
-    grad += (vec2(hash(cell + 11.1), hash(cell + 23.7)) - 0.5) * uMoldVar * 0.4;
-    off = (f-0.5)*uCell*(uZoom-1.0);
-  } else {
-    // one continuous pour of wave glass across the letters
-    vec2 bc = q/uCell*uWaveScale;
-    float h0 = waveN(bc);
-    grad = vec2(waveN(bc + vec2(e8,0.)) - h0, waveN(bc + vec2(0.,e8)) - h0) / e8 * 0.25 * uWaveScale;
-    grad /= 1.0 + length(grad)*0.12;
-  }
-  // bevelled letter edges: the blurred mask works as a height field rising into each letter
-  float be = 1.5;
-  vec2 gb = vec2(bv(p + vec2(be,0.)) - bv(p - vec2(be,0.)), bv(p + vec2(0.,be)) - bv(p - vec2(0.,be))) / (2.0*be);
-  grad += gb * uBevelPx * uBevelAmt;
-  off -= grad*uRefract*uCell*0.5;
+  float e = 2.0;
+  float h0 = H(p);
+  vec2 grad = vec2(H(p + vec2(e,0.)) - h0, H(p + vec2(0.,e)) - h0) / e * uCell * 0.25;
+  grad /= 1.0 + length(grad)*0.12;
+  vec2 off = -grad*uRefract*uCell*0.5;
 
   vec3 col = vec3(0.0);
   float rnd = hash(p + fract(uTime)*17.0)*6.2831;
@@ -482,16 +442,12 @@ vec4 shadeAt(vec2 p){
   vec3 sCol = mix(vec3(1.0), clamp(col/(lum+0.05)*0.7, 0.0, 1.5), 0.35);
   col += spec*uHighlight*pick*sCol;
 
-  if(uBlocks > 0.5){
-    float ed = max(abs(b.x*2.0-1.0), abs(b.y*2.0-1.0));
-    col *= 1.0 - smoothstep(0.95, 1.0, ed)*uEdgeDark;
-  }
-  // the polished letter edge catches a thin line of light even where little comes through
-  float bvp = bv(p);
-  float rimBand = smoothstep(0.08, 0.3, bvp) * (1.0 - smoothstep(0.3, 0.6, bvp));
-  float facing = 0.5 + 0.5*dot(normalize(gb + 1e-5), vec2(cos(uLight), -sin(uLight)));
-  col *= 1.0 - (1.0 - smoothstep(0.0, 0.3, bvp))*uEdgeDark*0.5;
-  col += rimBand * uEdgeGlow * (0.25 + 0.75*facing) * (0.6 + lum);
+  // dark glass edge, then a polished rim that catches a line of light
+  float t = dist(p);
+  col *= 1.0 - (1.0 - smoothstep(0.0, 0.08, t))*uEdgeDark;
+  float band = smoothstep(0.03, 0.12, t) * (1.0 - smoothstep(0.22, 0.5, t));
+  float facing = 0.5 + 0.5*dot(normalize(grad + 1e-5), vec2(cos(uLight), -sin(uLight)));
+  col += band * uEdgeGlow * (0.25 + 0.75*facing) * (0.6 + lum);
   col += (hash(p*1.37 + fract(uTime)*31.0) - 0.5)*uGrain;
   return mix(outside, vec4(col, 1.0), m);
 }
@@ -544,8 +500,8 @@ const lightTex = makeTex();
 /* ---------------- text ---------------- */
 // The letters are drawn into a canvas mask; a blurred copy gives the bevel around each letter.
 const maskCanvas = document.createElement('canvas');
-const bevCanvas = document.createElement('canvas');
-const maskTex = makeTex(), bevTex = makeTex();
+const distCanvas = document.createElement('canvas');
+const maskTex = makeTex(), distTex = makeTex();
 let uploadCount = 0;
 function fontFamily(){ return FONT_CSS[P.font] || `"${P.font}", sans-serif`; }
 function drawText(){
@@ -576,20 +532,45 @@ function drawText(){
   let y = (H - m.h)/2 + m.asc;
   lines.forEach(l => { g.fillText(l, x, y); y += size*P.leading; });
 
-  // bevel: a blurred copy of the mask, its slope becomes the edge of the glass
-  const bev = Math.max(1, P.bevel * W / 1080);
-  const hasFilter = 'filter' in g;
-  const k = hasFilter ? 4 : Math.max(2, bev/2);
-  bevCanvas.width = Math.max(2, Math.round(W/k)); bevCanvas.height = Math.max(2, Math.round(H/k));
-  const bg2 = bevCanvas.getContext('2d');
-  if (hasFilter) bg2.filter = `blur(${(bev/k*0.6).toFixed(2)}px)`;
-  bg2.imageSmoothingQuality = 'high';
-  bg2.drawImage(maskCanvas, 0, 0, bevCanvas.width, bevCanvas.height);
+  // rim: distance from each pixel inside a letter to its outline (Felzenszwalb distance transform)
+  const sc = Math.min(1, 2000 / Math.max(W, H));
+  const w = Math.max(2, Math.round(W*sc)), h = Math.max(2, Math.round(H*sc));
+  distCanvas.width = w; distCanvas.height = h;
+  const dg = distCanvas.getContext('2d');
+  dg.drawImage(maskCanvas, 0, 0, w, h);
+  const img = dg.getImageData(0, 0, w, h), px = img.data;
+  const INF = 1e20, grid = new Float64Array(w*h);
+  for (let k = 0; k < w*h; k++) grid[k] = px[k*4+3] > 127 ? INF : 0;
+  const n = Math.max(w, h), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n+1);
+  const edt1d = len => {
+    v[0] = 0; z[0] = -INF; z[1] = INF; let k = 0;
+    for (let q = 1; q < len; q++){
+      let s2 = ((f[q] + q*q) - (f[v[k]] + v[k]*v[k])) / (2*q - 2*v[k]);
+      while (s2 <= z[k]){ k--; s2 = ((f[q] + q*q) - (f[v[k]] + v[k]*v[k])) / (2*q - 2*v[k]); }
+      k++; v[k] = q; z[k] = s2; z[k+1] = INF;
+    }
+    k = 0;
+    for (let q = 0; q < len; q++){ while (z[k+1] < q) k++; d[q] = (q - v[k])*(q - v[k]) + f[v[k]]; }
+  };
+  for (let x = 0; x < w; x++){ for (let y = 0; y < h; y++) f[y] = grid[y*w+x]; edt1d(h); for (let y = 0; y < h; y++) grid[y*w+x] = d[y]; }
+  for (let y = 0; y < h; y++){ for (let x = 0; x < w; x++) f[x] = grid[y*w+x]; edt1d(w); for (let x = 0; x < w; x++) grid[y*w+x] = d[x]; }
+  const rimPx = Math.max(2, P.bevel * W / 1080) * sc;
+  for (let k = 0; k < w*h; k++){
+    const t = Math.min(1, Math.max(0, (Math.sqrt(grid[k]) - 0.5) / rimPx));
+    px[k*4] = px[k*4+1] = px[k*4+2] = 255; px[k*4+3] = Math.round(t*255);
+  }
+  dg.putImageData(img, 0, 0);
+  // a light blur removes the stair-steps a pixel-grid distance transform leaves on curves
+  if ('filter' in dg){
+    const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+    tmp.getContext('2d').drawImage(distCanvas, 0, 0);
+    dg.clearRect(0, 0, w, h); dg.filter = 'blur(1.4px)'; dg.drawImage(tmp, 0, 0); dg.filter = 'none';
+  }
 
   gl.bindTexture(gl.TEXTURE_2D, maskTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
-  gl.bindTexture(gl.TEXTURE_2D, bevTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bevCanvas);
+  gl.bindTexture(gl.TEXTURE_2D, distTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, distCanvas);
 }
 async function loadFonts(files){
   for (const file of files){
@@ -733,7 +714,6 @@ function render(){
   gl.uniform2f(U.uCover, cover[0], cover[1]);
   gl.uniform1f(U.uFlip, flip);
   gl.uniform1f(U.uCell, P.cell * W / 1080);   // block size scales with output width
-  gl.uniform1f(U.uZoom, P.zoom);
   gl.uniform1f(U.uRefract, P.refract);
   gl.uniform1f(U.uFrost, P.frost * W / 1080);
   gl.uniform1f(U.uChroma, P.chroma);
@@ -745,23 +725,17 @@ function render(){
   gl.uniform1f(U.uEdgeDark, P.edgeDark);
   gl.uniform1f(U.uGrain, P.grain);
   gl.uniform1f(U.uTime, clock);
-  gl.uniform1f(U.uGap, P.mortar === 0 ? 0 : P.gap);
-  gl.uniform3fv(U.uGrout, rgb(MORTAR_COL[P.mortar] || '#000000'));
-  gl.uniform1f(U.uRim, P.rim);
   gl.uniform1f(U.uWave, P.wave);
   gl.uniform1f(U.uWaveScale, P.waveScale);
   gl.uniform1f(U.uWaveTwist, P.waveTwist);
   gl.uniform1f(U.uCrease, P.crease);
-  gl.uniform1f(U.uMoldVar, P.moldVar);
   gl.uniform1i(U.uAA, P.aa ? 1 : 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, maskTex);
   gl.uniform1i(U.uMask, 1);
-  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, bevTex);
-  gl.uniform1i(U.uBev, 2);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, distTex);
+  gl.uniform1i(U.uDist, 2);
   gl.activeTexture(gl.TEXTURE0);
-  gl.uniform1f(U.uBlocks, P.blocks ? 1 : 0);
-  gl.uniform1f(U.uBevelPx, Math.max(1, P.bevel * W / 1080));
-  gl.uniform1f(U.uBevelAmt, P.bevel > 0 ? P.bevelAmt : 0);
+  gl.uniform1f(U.uRimAmt, P.bevelAmt);
   gl.uniform1f(U.uOutLight, P.outLight);
   gl.uniform1f(U.uEdgeGlow, P.edgeGlow);
   gl.uniform3fv(U.uOutBg, rgb(P.bg));
