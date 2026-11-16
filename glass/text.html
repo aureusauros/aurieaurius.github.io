@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glass Type</title>
+<meta name="description" content="Set type in wave glass blocks with your own fonts, lit on black, and export PNG or looping video.">
+<style>
+  :root{
+    --bg:#0e0f11; --panel:#16181b; --panel2:#1d2024; --line:#2a2e33; --text:#e9eaec; --dim:#9aa0a7;
+    --accent:#e8ecf2; --accent-ink:#0e0f11; --danger:#ff6b5e;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font:13px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .app{display:grid;grid-template-columns:1fr 340px;height:100%}
+  .stage{position:relative;display:flex;align-items:center;justify-content:center;padding:20px;min-width:0;min-height:0;background:#08090a}
+  .stage canvas{max-width:100%;max-height:100%;box-shadow:0 20px 60px rgba(0,0,0,.6);border-radius:4px;background:#000}
+  .stage.drag::after{content:"Drop a font, video or image";position:absolute;inset:12px;border:2px dashed var(--accent);border-radius:12px;
+    display:flex;align-items:center;justify-content:center;font-size:20px;background:rgba(0,0,0,.6);color:var(--accent)}
+  .hud{position:absolute;left:20px;bottom:16px;right:20px;display:flex;gap:10px;align-items:center;pointer-events:none}
+  .pill{background:rgba(20,22,25,.85);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:999px;padding:6px 12px;color:var(--dim)}
+  .rec-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-right:6px;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.2}}
+  .progress{flex:1;height:4px;background:rgba(255,255,255,.12);border-radius:4px;overflow:hidden}
+  .progress i{display:block;height:100%;width:0;background:var(--danger)}
+
+  aside{background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column}
+  header{padding:16px 16px 10px}
+  header h1{margin:0;font-size:16px;letter-spacing:.2px}
+  header p{margin:4px 0 0;color:var(--dim);font-size:12px}
+  .row{display:flex;gap:6px;flex-wrap:wrap}
+  .block{padding:12px 16px;border-top:1px solid var(--line)}
+  .block h2{margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:600}
+  button,.btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;
+    padding:7px 10px;font:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  button:hover,.btn:hover{border-color:#3d434a}
+  button:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+  button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+  button.danger{background:var(--danger);border-color:var(--danger);color:#200}
+  button.on{border-color:var(--accent)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .ctl{display:grid;grid-template-columns:100px 1fr 44px;align-items:center;gap:8px;margin:6px 0}
+  .ctl label{color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctl output{font-variant-numeric:tabular-nums;color:var(--dim);font-size:11px;text-align:right}
+  .ctl.sel{grid-template-columns:100px 1fr}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  textarea{width:100%;resize:vertical;min-height:52px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px;font:inherit}
+  .stage.alpha canvas{background:repeating-conic-gradient(#222 0 25%,#333 0 50%) 0 0/24px 24px}
+  select,input[type=color],input[type=number],input[type=text]{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:inherit}
+  input[type=color]{padding:0 2px;height:26px}
+  input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;margin:0}
+  .export{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:6px;flex-wrap:wrap}
+  .export button{flex:1;justify-content:center}
+  .note{color:var(--dim);font-size:11px;margin-top:6px}
+  .src-name{color:var(--dim);font-size:11px;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  @media (max-width:820px){
+    .app{grid-template-columns:1fr;grid-template-rows:auto auto;height:auto}
+    .stage{height:60vh;padding:12px}
+    aside{border-left:0;border-top:1px solid var(--line);overflow:visible}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="stage" id="stage">
+    <canvas id="gl"></canvas>
+    <div class="hud">
+      <span class="pill" id="status">Generated light · seamless loop</span>
+      <div class="progress" id="progress" hidden><i></i></div>
+    </div>
+  </main>
+
+  <aside>
+    <header>
+      <h1>Glass Type</h1>
+      <p>Type set in cast wave glass, lit from behind on black. Upload your own font, then export a PNG or a looping video.</p>
+    </header>
+
+    <div class="block">
+      <h2>Preset</h2>
+      <div class="row">
+        <button id="preset" class="on">Wave blocks</button>
+        <button id="playpause">Pause</button>
+      </div>
+    </div>
+
+    <div class="block" id="grp-text"><h2>Text</h2>
+      <div class="row" style="margin-bottom:6px">
+        <label class="btn">Upload font<input id="fontFile" type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" multiple hidden></label>
+      </div>
+      <div class="note" id="fontNote" style="margin:0 0 6px">TTF, OTF, WOFF or WOFF2. Fonts stay in your browser.</div>
+    </div>
+    <div class="block" id="grp-light"><h2>Light</h2></div>
+    <div class="block" id="grp-glass"><h2>Wave blocks</h2></div>
+    <div class="block" id="grp-mortar"><h2>Mortar</h2></div>
+    <div class="block" id="grp-shine"><h2>Reflections</h2></div>
+    <div class="block" id="grp-out"><h2>Output</h2><div class="note" id="fmtNote"></div></div>
+
+    <div class="block">
+      <h2>Own footage</h2>
+      <div class="row">
+        <label class="btn">Use a video or image<input id="file" type="file" accept="video/*,image/*" hidden></label>
+        <button id="backToLight" hidden>Back to generated light</button>
+      </div>
+      <div class="src-name" id="srcName">Optional. The glass works on any footage too.</div>
+    </div>
+
+    <div class="export">
+      <button id="snap">Save PNG</button>
+      <button id="rec" class="primary">Export video</button>
+      <button id="resave" hidden>Save last export again</button>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* ---------------- parameters ---------------- */
+const STYLES = ['Light sweep','Point light','Strip lights','Horizon glow','Window','Soft fields','Light trail'];
+const PALETTES = {white:'White', warm:'Warm white', cool:'Cool white', amber:'Amber', red:'Red', violet:'Violet', custom:'Custom'};
+const PALETTE_COLS = {white:['#ffffff','#ffffff'], warm:['#fff3e3','#ffc98f'], cool:['#ffffff','#d2e2ff'], amber:['#ffc06b','#ff7a1f'], red:['#ff3346','#ff8a5c'], violet:['#c9a6ff','#7a4dff']};
+const MORTAR = ['None (blocks flush)','Dark','Pale'];
+const SIZES  = {'1080x1920':'9:16 — 1080×1920','1080x1350':'4:5 — 1080×1350','1080x1080':'1:1 — 1080×1080','1920x1080':'16:9 — 1920×1080','3840x2160':'16:9 — 3840×2160 (4K)','720x1280':'9:16 — 720×1280'};
+
+const FONTS = {sans:'System sans', serif:'System serif', mono:'System mono'};
+const FONT_CSS = {sans:'"Helvetica Neue", Helvetica, Arial, sans-serif', serif:'Georgia, "Times New Roman", serif', mono:'"SF Mono", Menlo, Consolas, monospace'};
+
+const SCHEMA = [
+  // group, key, label, type, ...
+  ['text','text','Text','text','GLASS'],
+  ['text','font','Font','select',FONTS,'sans'],
+  ['text','weight','Weight','select',{300:'Light',400:'Regular',700:'Bold',900:'Black'},'900'],
+  ['text','fit','Fit to frame','check',true],
+  ['text','tsize','Text size','range',40,1400,1,420],
+  ['text','tracking','Letter spacing','range',-100,400,1,0],
+  ['text','leading','Line height','range',0.6,2,0.01,0.95],
+  ['text','align','Align','select',{center:'Centre',left:'Left',right:'Right'},'center'],
+  ['text','bevel','Edge bevel','range',0,80,1,22],
+  ['text','bevelAmt','Bevel depth','range',0,3,0.01,1.2],
+  ['text','edgeGlow','Edge glint','range',0,1.5,0.01,0.4],
+  ['text','outLight','Light outside','range',0,1,0.01,0],
+  ['light','style','Light','select',STYLES,5],
+  ['light','palette','Colour','select',PALETTES,'white'],
+  ['light','colA','Colour 1','color','#ffffff'],
+  ['light','colB','Colour 2','color','#ffffff'],
+  ['light','count','Number',       'range',1,4,1,3],
+  ['light','lsize','Size',         'range',0.3,3,0.01,1],
+  ['light','soft','Edge softness', 'range',0,1,0.01,0.2],
+  ['light','angle','Direction',    'range',-90,90,1,0],
+  ['light','bright','Brightness',  'range',0.2,4,0.01,2],
+  ['light','speed','Speed',        'range',1,4,1,1],
+  ['light','bg','Background','color','#000000'],
+
+  ['glass','blocks','Blocks in letters','check',true],
+  ['glass','cell','Block size',   'range',20,600,1,110],
+  ['glass','wave','Wave depth',   'range',0,4,0.01,2.4],
+  ['glass','waveScale','Wave size','range',0.5,6,0.05,1.2],
+  ['glass','waveTwist','Swirl',   'range',0,3,0.01,1.2],
+  ['glass','crease','Sharp folds','range',0,1,0.01,0.25],
+  ['glass','rim','Rim width',     'range',0.01,0.4,0.005,0.12],
+  ['glass','refract','Refraction','range',0,2.5,0.01,0.9],
+  ['glass','zoom','Lens scale',   'range',-1,1.5,0.01,0.95],
+  ['glass','moldVar','Block variation','range',0,1,0.01,0.12],
+  ['glass','chroma','Dispersion', 'range',0,0.4,0.005,0.05],
+  ['glass','frost','Frost blur',  'range',0,16,0.1,0],
+
+  ['mortar','mortar','Mortar','select',MORTAR,0],
+  ['mortar','gap','Mortar width', 'range',0.005,0.3,0.002,0.06],
+
+  ['shine','highlight','Glints',  'range',0,3,0.01,1.0],
+  ['shine','shine','Gloss',       'range',2,200,1,45],
+  ['shine','sheen','Sheen in dark','range',0,0.6,0.005,0.12],
+  ['shine','react','Light pickup','range',0,2,0.01,1],
+  ['shine','lightAng','Light angle','range',0,360,1,225],
+  ['shine','edgeDark','Edge shadow','range',0,1,0.01,0.55],
+  ['shine','grain','Grain',       'range',0,0.15,0.005,0.015],
+
+  ['out','size','Size','select',SIZES,'1920x1080'],
+  ['out','transparent','Transparent PNG','check',false],
+  ['out','duration','Length (s)','number',1,120,1,8],
+  ['out','aa','Anti-alias','check',true],
+  ['out','fps','Frame rate','select',{30:'30 fps',60:'60 fps',24:'24 fps'},'30'],
+  ['out','bitrate','Quality','select',{8:'Standard (8 Mbps)',16:'High (16 Mbps)',32:'Max (32 Mbps)'},'16'],
+  ['out','format','Format','select',{auto:'Auto (MP4 if possible)',mp4:'MP4',webm:'WebM'},'auto'],
+];
+const DEFAULTS = {};
+SCHEMA.forEach(s => { DEFAULTS[s[1]] = s[s.length-1]; });
+const P = Object.assign({}, DEFAULTS);
+const OUTPUT_KEYS = ['size','duration','aa','fps','bitrate','format','transparent','text','font','weight'];
+
+/* ---------------- UI ---------------- */
+const $ = id => document.getElementById(id);
+const inputs = {};
+function fmt(v, step){ const d = step>=1?0:step>=0.1?1:step>=0.01?2:3; return v.toFixed(d); }
+function buildControls(){
+  SCHEMA.forEach(s => {
+    const [g,key,label,type] = s;
+    const wrap = document.createElement('div');
+    wrap.className = 'ctl' + (type==='range' ? '' : ' sel');
+    const lab = document.createElement('label'); lab.textContent = label; lab.htmlFor = 'c_'+key;
+    wrap.appendChild(lab);
+    let el, out;
+    if (type === 'range'){
+      el = document.createElement('input'); el.type='range'; el.min=s[4]; el.max=s[5]; el.step=s[6];
+      out = document.createElement('output');
+      el.addEventListener('input', () => { P[key] = +el.value; out.textContent = fmt(+el.value, s[6]); presetOff(); if (g==='text') onParamChange(key); });
+      el.addEventListener('dblclick', () => setParam(key, DEFAULTS[key]));
+    } else if (type === 'select'){
+      el = document.createElement('select');
+      const opts = s[4];
+      if (Array.isArray(opts)) opts.forEach((o,i)=>el.add(new Option(o,i)));
+      else Object.entries(opts).forEach(([v,t])=>el.add(new Option(t,v)));
+      el.addEventListener('change', () => { P[key] = Array.isArray(opts) ? +el.value : el.value; onParamChange(key); presetOff(); });
+    } else if (type === 'check'){
+      el = document.createElement('input'); el.type='checkbox';
+      el.addEventListener('change', () => { P[key] = el.checked; onParamChange(key); });
+      wrap.style.gridTemplateColumns = '100px auto';
+    } else if (type === 'color'){
+      el = document.createElement('input'); el.type='color';
+      el.addEventListener('input', () => { P[key] = el.value; presetOff(); if (key==='colA'||key==='colB') setParam('palette','custom',true); });
+    } else if (type === 'text'){
+      el = document.createElement('textarea'); el.rows = 2; el.maxLength = 200; el.spellcheck = false;
+      el.addEventListener('input', () => { P[key] = el.value; onParamChange(key); });
+    } else if (type === 'number'){
+      el = document.createElement('input'); el.type='number'; el.min=s[4]; el.max=s[5]; el.step=s[6];
+      el.addEventListener('change', () => { P[key] = Math.max(s[4], Math.min(s[5], +el.value||DEFAULTS[key])); el.value=P[key]; });
+    }
+    el.id = 'c_'+key;
+    wrap.appendChild(el); if (out) wrap.appendChild(out);
+    wrap.id = 'row_' + key;
+    inputs[key] = {el,out,s};
+    $('grp-'+g).insertBefore(wrap, g==='out' ? $('fmtNote') : null);
+  });
+  Object.keys(P).forEach(k => setParam(k, P[k], true));
+  onParamChange('mortar'); onParamChange('style'); onParamChange('fit');
+}
+function setParam(key, v, silent){
+  const c = inputs[key]; if (!c) return;
+  P[key] = v;
+  if (c.s[3]==='check') c.el.checked = !!v; else c.el.value = v;
+  if (c.out) c.out.textContent = fmt(+v, c.s[6]);
+  if (!silent) onParamChange(key);
+}
+function presetOff(){ $('preset').classList.remove('on'); }
+$('preset').onclick = () => {
+  Object.keys(DEFAULTS).forEach(k => { if (!OUTPUT_KEYS.includes(k)) setParam(k, DEFAULTS[k], true); });
+  onParamChange('mortar'); onParamChange('style'); onParamChange('fit'); drawText();
+  $('preset').classList.add('on');
+};
+function onParamChange(key){
+  if (key==='size') resize();
+  if (key==='format') updateFormatNote();
+  if (key==='mortar') $('row_gap').hidden = P.mortar === 0;
+  if (key==='style'){ $('row_angle').hidden = ![0,2,3,4].includes(P.style); $('row_count').hidden = P.style === 3; }
+  if (key==='fit') $('row_tsize').hidden = !!P.fit;
+  if (key==='transparent') $('stage').classList.toggle('alpha', !!P.transparent);
+  if (['text','font','weight','fit','tsize','tracking','leading','align','bevel'].includes(key)) drawText();
+  if (key==='palette' && PALETTE_COLS[P.palette]){ setParam('colA', PALETTE_COLS[P.palette][0], true); setParam('colB', PALETTE_COLS[P.palette][1], true); }
+}
+
+/* ---------------- WebGL ---------------- */
+const canvas = $('gl');
+const gl = canvas.getContext('webgl', {preserveDrawingBuffer:true, antialias:false, premultipliedAlpha:false});
+if (!gl){ $('status').textContent = 'WebGL is not available in this browser.'; return; }
+
+const VS = `attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}`;
+
+// Pass 1: procedural light on a dark background. Motion is periodic in uPhase so clips loop seamlessly.
+const FS_LIGHT = `
+precision highp float;
+uniform vec2 uRes;
+uniform float uPhase, uLoop, uSize, uSoft, uAngle, uBright, uCount;
+uniform int uStyle;
+uniform vec3 uColA, uColB, uBg;
+#define TAU 6.2831853
+vec3 pal(float k){ return mix(uColA, uColB, clamp(k, 0.0, 1.0)); }
+float ease(float x){ return x*x*(3.0 - 2.0*x); }
+// hard-edged source with adjustable softness: hard light shows the glass texture best
+float edge(float d, float hw){ float e = max(hw*uSoft*2.0, 0.0015); return 1.0 - smoothstep(hw - e*0.5, hw + e*0.5, d); }
+float bloom(float d, float hw){ return exp(-max(d - hw, 0.0)/(0.015 + hw*1.2))*0.16; }
+float sdBox(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
+float sdSeg(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba)/dot(ba, ba), 0.0, 1.0); return length(pa - ba*h); }
+vec2 trailPos(float t, float asp){ return vec2(sin(t)*0.38*asp, sin(2.0*t + 0.7)*0.3); }
+
+void main(){
+  vec2 p = (gl_FragCoord.xy - 0.5*uRes)/uRes.y;
+  float asp = uRes.x/uRes.y, a = uPhase, n = uCount;
+  vec2 dir = vec2(cos(uAngle), sin(uAngle));
+  float x = dot(p, dir), y = dot(p, vec2(-dir.y, dir.x));
+  float span = 0.5*(abs(dir.x)*asp + abs(dir.y));      // half the frame, measured along dir
+  vec3 c = vec3(0.0);
+
+  if(uStyle==0){                         // light sweep: a strip light travelling across, like a product reveal
+    for(int i=0;i<4;i++){
+      float fi = float(i); if(fi >= n) break;
+      float t = fract(uLoop + fi/n);
+      float pos = mix(-span - 0.25, span + 0.25, ease(t));
+      float hw = 0.03*uSize, d = abs(x - pos);
+      c += pal(n > 1.0 ? fi/(n-1.0) : 0.0) * (edge(d, hw) + bloom(d, hw)) * exp(-y*y*1.4);
+    }
+  } else if(uStyle==1){                  // point light: one small bright source behind the wall
+    for(int i=0;i<3;i++){
+      float fi = float(i); if(fi >= min(n, 3.0)) break;
+      vec2 pos = vec2(sin(a + fi*2.1)*0.28*asp, sin(2.0*a + fi*1.3)*0.16 + cos(a + fi)*0.06);
+      float r = 0.022*uSize, d = length(p - pos);
+      c += pal(n > 1.0 ? fi/(n-1.0) : 0.0) * (edge(d, r)*2.5 + pow(r*5.0/(d + r*5.0), 2.0)*0.9);
+    }
+  } else if(uStyle==2){                  // strip lights: stripboxes with a linear fade along their length
+    for(int i=0;i<4;i++){
+      float fi = float(i); if(fi >= n) break;
+      float off = (n > 1.0 ? (fi/(n-1.0) - 0.5)*1.2*span : 0.0) + sin(a + fi*1.9)*0.05;
+      float hw = 0.012*uSize, d = abs(x - off);
+      float yy = y - sin(a + fi*2.7)*0.06, len = 0.34;
+      float lf = smoothstep(len, len - 0.06, abs(yy));
+      float grad = clamp(0.6 + 0.4*yy/len, 0.15, 1.0);
+      c += pal(n > 1.0 ? fi/(n-1.0) : 0.0) * (edge(d, hw) + bloom(d, hw)) * lf * grad;
+    }
+  } else if(uStyle==3){                  // horizon glow: a bright edge with a long gradient falling away below it
+    float h0 = sin(a)*0.16 - 0.04, dv = y - h0;
+    float below = dv < 0.0 ? exp(dv*7.0/uSize)*0.45 : 0.0;
+    float line = edge(abs(dv), 0.004*uSize) + bloom(abs(dv), 0.004*uSize);
+    c += (pal(0.0)*line*1.3 + pal(1.0)*below) * (0.55 + 0.45*exp(-x*x*1.2));
+  } else if(uStyle==4){                  // window: a bright pane of light with mullions, drifting slowly
+    vec2 ctr = vec2(sin(a)*0.16*asp, cos(a)*0.08);
+    vec2 q = vec2(dot(p - ctr, dir), dot(p - ctr, vec2(-dir.y, dir.x)));
+    vec2 hs = vec2(0.13, 0.21)*uSize;
+    float e = max(0.0015, uSoft*0.04);
+    float sd = sdBox(q, hs, 0.004);
+    float inside = 1.0 - smoothstep(-e, e, sd);
+    float panes = clamp(n, 1.0, 4.0);
+    float mx = fract((q.x + hs.x)/(2.0*hs.x)*panes);
+    float my = fract((q.y + hs.y)/(2.0*hs.y)*(panes > 2.0 ? 2.0 : 1.0));
+    float bw = 0.035/max(uSize, 0.3);
+    float bars = (panes > 1.0 ? smoothstep(0.0, bw, mx)*smoothstep(1.0, 1.0 - bw, mx) : 1.0)
+               * (panes > 2.0 ? smoothstep(0.0, bw*0.6, my)*smoothstep(1.0, 1.0 - bw*0.6, my) : 1.0);
+    float grad = 0.7 + 0.3*q.y/hs.y;
+    c += pal(0.5 - 0.5*q.y/hs.y) * (inside*bars*grad + bloom(max(sd, 0.0), 0.0)*1.5);
+  } else if(uStyle==5){                  // soft fields: large drifting pools of light
+    for(int i=0;i<5;i++){
+      float fi = float(i); if(fi >= n + 1.0) break;
+      vec2 pos = vec2(sin(a + fi*1.7)*0.3*asp, cos(a + fi*2.9)*0.28);
+      float r = 0.13*uSize*(0.7 + 0.15*fi), d = length(p - pos);
+      c += pal(mod(fi, 2.0)) * exp(-d*d/(r*r))*0.4;
+    }
+  } else {                               // light trail: a point of light drawing a fading line, like light painting
+    float m = 0.0;
+    vec2 prev = trailPos(a, asp);
+    float len = 2.8*(0.5 + 0.5*n/4.0);
+    for(int j=1;j<=48;j++){
+      float fj = float(j);
+      vec2 cur = trailPos(a - fj*len/48.0, asp);
+      float fade = pow(1.0 - fj/48.0, 1.1);
+      float w = 0.016*uSize*(0.35 + 0.65*fade);
+      float d = sdSeg(p, prev, cur);
+      m = max(m, (edge(d, w) + bloom(d, w)*0.6)*fade);
+      prev = cur;
+    }
+    float dh = length(p - trailPos(a, asp));
+    c += pal(0.0)*m*1.4 + pal(1.0)*(edge(dh, 0.014*uSize)*2.0 + pow(0.03*uSize/(dh + 0.03*uSize), 2.0)*0.7);
+  }
+  c *= uBright;
+  c = 1.0 - exp(-c*1.3);
+  gl_FragColor = vec4(uBg + c*(1.0 - uBg), 1.0);
+}`;
+
+// Pass 2: cast wave glass blocks refracting whatever is in uTex.
+const FS_GLASS = `
+precision highp float;
+uniform sampler2D uTex;
+uniform vec2 uRes, uCover;
+uniform float uFlip, uCell, uZoom, uRefract, uFrost, uChroma, uHighlight, uShine, uSheen, uReact,
+              uLight, uEdgeDark, uGrain, uTime, uGap, uRim, uWave, uWaveScale, uWaveTwist, uCrease, uMoldVar;
+uniform vec3 uGrout, uOutBg;
+uniform int uAA;
+uniform sampler2D uMask, uBev;
+uniform float uBlocks, uBevelPx, uBevelAmt, uOutLight, uTransparent, uEdgeGlow;
+
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i), hash(i+vec2(1.,0.)), u.x), mix(hash(i+vec2(0.,1.)), hash(i+vec2(1.,1.)), u.x), u.y);
+}
+float fbm(vec2 p){
+  float a = 0.5, s = 0.0;
+  for(int i=0;i<3;i++){ s += a*vnoise(p); p = p*2.03 + vec2(1.7,9.2); a *= 0.5; }
+  return s;
+}
+vec3 src(vec2 px){
+  vec2 uv = (px/uRes - 0.5)*uCover + 0.5;
+  uv = clamp(uv, vec2(0.0005), vec2(0.9995));
+  if(uFlip > 0.5) uv.y = 1.0 - uv.y;
+  return texture2D(uTex, uv).rgb;
+}
+// one block: rounded rim around the edge, flowing wave pattern pressed into the face
+float waveH(vec2 b, vec2 seed){
+  vec2 d = clamp(min(b, 1.0-b), 0.0, 1.0);
+  vec2 t = clamp(d/max(uRim, 0.001), 0.0, 1.0);
+  vec2 rv = sqrt(1.0 - (1.0-t)*(1.0-t));
+  float rim = rv.x*rv.y;
+  vec2 p = b*uWaveScale + seed;
+  vec2 w = vec2(fbm(p + vec2(3.1,7.7)), fbm(p + vec2(8.3,2.8)));
+  float n = fbm(p + (w-0.5)*uWaveTwist*3.0);
+  n = mix(n, 1.0 - abs(2.0*n - 1.0), uCrease);
+  float inner = smoothstep(0.0, 1.0, min(t.x, t.y));
+  return rim*0.5 + n*uWave*0.35*inner;
+}
+
+float waveN(vec2 p){
+  vec2 w = vec2(fbm(p + vec2(3.1,7.7)), fbm(p + vec2(8.3,2.8)));
+  float n = fbm(p + (w-0.5)*uWaveTwist*3.0);
+  n = mix(n, 1.0 - abs(2.0*n - 1.0), uCrease);
+  return n*uWave*0.35;
+}
+float mk(vec2 px){ return texture2D(uMask, clamp(px/uRes, 0.0, 1.0)).a; }
+float bv(vec2 px){ return texture2D(uBev, clamp(px/uRes, 0.0, 1.0)).a; }
+
+vec4 shadeAt(vec2 p){
+  vec3 outC = mix(uOutBg, src(p), uOutLight);
+  vec4 outside = vec4(outC, 1.0 - uTransparent);
+  float m = mk(p);
+  if(m < 0.002) return outside;
+
+  vec2 q = p - 0.5*uRes + 0.5*uCell;
+  vec2 cell = floor(q/uCell), f = fract(q/uCell);
+  vec2 grad, b = vec2(0.5);
+  vec2 off = vec2(0.0);
+  float e8 = 0.004;
+  if(uBlocks > 0.5){
+    float g8 = uGap*0.5;
+    b = (f - g8)/(1.0 - uGap);
+    if(b.x < 0.0 || b.y < 0.0 || b.x > 1.0 || b.y > 1.0){
+      float dE = length(b - clamp(b, 0.0, 1.0)) / max(g8/(1.0-uGap), 1e-4);
+      vec3 gc = uGrout*(0.85 + 0.3*vnoise(q*0.45) + 0.15*(hash(floor(q*0.7))-0.5))*(0.7 + 0.3*smoothstep(0.0, 0.7, dE));
+      return mix(outside, vec4(gc, 1.0), m);
+    }
+    vec2 seed = (vec2(hash(cell + 1.7), hash(cell + 9.2)) - 0.5) * uMoldVar * 12.0;
+    float h0 = waveH(b, seed);
+    grad = vec2(waveH(b + vec2(e8,0.), seed) - h0, waveH(b + vec2(0.,e8), seed) - h0) / e8 * 0.25;
+    grad /= 1.0 + length(grad)*0.12;
+    grad += (vec2(hash(cell + 11.1), hash(cell + 23.7)) - 0.5) * uMoldVar * 0.4;
+    off = (f-0.5)*uCell*(uZoom-1.0);
+  } else {
+    // one continuous pour of wave glass across the letters
+    vec2 bc = q/uCell*uWaveScale;
+    float h0 = waveN(bc);
+    grad = vec2(waveN(bc + vec2(e8,0.)) - h0, waveN(bc + vec2(0.,e8)) - h0) / e8 * 0.25 * uWaveScale;
+    grad /= 1.0 + length(grad)*0.12;
+  }
+  // bevelled letter edges: the blurred mask works as a height field rising into each letter
+  float be = 1.5;
+  vec2 gb = vec2(bv(p + vec2(be,0.)) - bv(p - vec2(be,0.)), bv(p + vec2(0.,be)) - bv(p - vec2(0.,be))) / (2.0*be);
+  grad += gb * uBevelPx * uBevelAmt;
+  off -= grad*uRefract*uCell*0.5;
+
+  vec3 col = vec3(0.0);
+  float rnd = hash(p + fract(uTime)*17.0)*6.2831;
+  int n = uFrost > 0.01 ? 12 : 1;
+  for(int i=0;i<12;i++){
+    if(i>=n) break;
+    float fi = float(i);
+    float r = sqrt((fi+0.5)/12.0)*uFrost;
+    float a = fi*2.39996 + rnd;
+    vec2 bp = p + vec2(cos(a),sin(a))*r;
+    col.r += src(bp + off*(1.0+uChroma)).r;
+    col.g += src(bp + off).g;
+    col.b += src(bp + off*(1.0-uChroma)).b;
+  }
+  col /= float(n);
+
+  float lum = dot(col, vec3(0.299,0.587,0.114));
+  float pick = uSheen + lum*uReact*1.8;
+  vec3 N = normalize(vec3(-grad*0.7, 1.0));
+  vec3 L = normalize(vec3(cos(uLight), sin(uLight), 1.1));
+  col *= 1.0 + (dot(N,L) - L.z)*0.3*(0.5+lum);
+  float spec = pow(max(dot(reflect(-L,N), vec3(0.,0.,1.)), 0.0), uShine);
+  vec3 sCol = mix(vec3(1.0), clamp(col/(lum+0.05)*0.7, 0.0, 1.5), 0.35);
+  col += spec*uHighlight*pick*sCol;
+
+  if(uBlocks > 0.5){
+    float ed = max(abs(b.x*2.0-1.0), abs(b.y*2.0-1.0));
+    col *= 1.0 - smoothstep(0.95, 1.0, ed)*uEdgeDark;
+  }
+  // the polished letter edge catches a thin line of light even where little comes through
+  float bvp = bv(p);
+  float rimBand = smoothstep(0.08, 0.3, bvp) * (1.0 - smoothstep(0.3, 0.6, bvp));
+  float facing = 0.5 + 0.5*dot(normalize(gb + 1e-5), vec2(cos(uLight), -sin(uLight)));
+  col *= 1.0 - (1.0 - smoothstep(0.0, 0.3, bvp))*uEdgeDark*0.5;
+  col += rimBand * uEdgeGlow * (0.25 + 0.75*facing) * (0.6 + lum);
+  col += (hash(p*1.37 + fract(uTime)*31.0) - 0.5)*uGrain;
+  return mix(outside, vec4(col, 1.0), m);
+}
+
+void main(){
+  vec2 p = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec4 c;
+  if(uAA==1){
+    c = 0.25*(shadeAt(p + vec2(-0.25,-0.25)) + shadeAt(p + vec2(0.25,-0.25))
+            + shadeAt(p + vec2(-0.25, 0.25)) + shadeAt(p + vec2(0.25, 0.25)));
+  } else c = shadeAt(p);
+  gl_FragColor = vec4(clamp(c.rgb, 0.0, 1.0), c.a);
+}`;
+
+function program(fs){
+  const mk = (type, src) => {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  };
+  const pr = gl.createProgram();
+  gl.attachShader(pr, mk(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, mk(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(pr, 0, 'a');
+  gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  const U = {}, n = gl.getProgramParameter(pr, gl.ACTIVE_UNIFORMS);
+  for (let i=0;i<n;i++){ const u = gl.getActiveUniform(pr, i); U[u.name] = gl.getUniformLocation(pr, u.name); }
+  return {pr, U};
+}
+const lightProg = program(FS_LIGHT);
+const glassProg = program(FS_GLASS);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function makeTex(){
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+const mediaTex = makeTex();
+const lightTex = makeTex();
+
+/* ---------------- text ---------------- */
+// The letters are drawn into a canvas mask; a blurred copy gives the bevel around each letter.
+const maskCanvas = document.createElement('canvas');
+const bevCanvas = document.createElement('canvas');
+const maskTex = makeTex(), bevTex = makeTex();
+let uploadCount = 0;
+function fontFamily(){ return FONT_CSS[P.font] || `"${P.font}", sans-serif`; }
+function drawText(){
+  if (!canvas.width) return;
+  const W = canvas.width, H = canvas.height;
+  maskCanvas.width = W; maskCanvas.height = H;
+  const g = maskCanvas.getContext('2d');
+  const lines = (P.text || '').split('\n');
+  const fam = fontFamily(), wt = P.weight;
+  const setFont = sz => { g.font = `${wt} ${sz}px ${fam}`; if ('letterSpacing' in g) g.letterSpacing = (P.tracking/1000*sz) + 'px'; };
+  let size = P.tsize * W / 1080;
+  const metrics = sz => {
+    setFont(sz);
+    const ms = lines.map(l => g.measureText(l || ' '));
+    const w = Math.max(...ms.map(m => m.width), 1);
+    const asc = ms[0].actualBoundingBoxAscent || sz*0.72;
+    const desc = ms[ms.length-1].actualBoundingBoxDescent || sz*0.05;
+    return {w, h: asc + desc + (lines.length-1)*sz*P.leading, asc};
+  };
+  if (P.fit){
+    const m = metrics(100);
+    size = Math.max(8, 100 * Math.min(W*0.88/m.w, H*0.78/Math.max(m.h, 1)));
+  }
+  const m = metrics(size);
+  g.fillStyle = '#fff';
+  g.textAlign = P.align; g.textBaseline = 'alphabetic';
+  const x = P.align==='left' ? W*0.06 : P.align==='right' ? W*0.94 : W/2;
+  let y = (H - m.h)/2 + m.asc;
+  lines.forEach(l => { g.fillText(l, x, y); y += size*P.leading; });
+
+  // bevel: a blurred copy of the mask, its slope becomes the edge of the glass
+  const bev = Math.max(1, P.bevel * W / 1080);
+  const hasFilter = 'filter' in g;
+  const k = hasFilter ? 4 : Math.max(2, bev/2);
+  bevCanvas.width = Math.max(2, Math.round(W/k)); bevCanvas.height = Math.max(2, Math.round(H/k));
+  const bg2 = bevCanvas.getContext('2d');
+  if (hasFilter) bg2.filter = `blur(${(bev/k*0.6).toFixed(2)}px)`;
+  bg2.imageSmoothingQuality = 'high';
+  bg2.drawImage(maskCanvas, 0, 0, bevCanvas.width, bevCanvas.height);
+
+  gl.bindTexture(gl.TEXTURE_2D, maskTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
+  gl.bindTexture(gl.TEXTURE_2D, bevTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bevCanvas);
+}
+async function loadFonts(files){
+  for (const file of files){
+    if (!/\.(ttf|otf|woff2?)$/i.test(file.name)){ $('fontNote').textContent = `${file.name} is not a font file. Use TTF, OTF, WOFF or WOFF2.`; continue; }
+    try {
+      const fam = 'Upload ' + (++uploadCount) + ' ' + file.name.replace(/\.[^.]+$/, '').replace(/["\\]/g, '');
+      const face = new FontFace(fam, await file.arrayBuffer());
+      await face.load();
+      document.fonts.add(face);
+      const sel = inputs.font.el;
+      sel.add(new Option(file.name.replace(/\.[^.]+$/, ''), fam));
+      setParam('font', fam);
+      $('fontNote').textContent = `Using ${file.name}. Fonts stay in your browser.`;
+    } catch(e){
+      $('fontNote').textContent = `Could not read ${file.name}. The file may be damaged or not a font.`;
+    }
+  }
+}
+$('fontFile').addEventListener('change', e => { loadFonts([...e.target.files]); e.target.value = ''; });
+const fbo = gl.createFramebuffer();
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+
+/* ---------------- sources ---------------- */
+const video = document.createElement('video');
+video.playsInline = true; video.loop = true;
+let source = {kind:'light', el:null, w:1080, h:1920};
+
+function setSource(kind, el, w, h, name){
+  source = {kind, el, w, h};
+  $('srcName').textContent = name;
+  $('backToLight').hidden = kind === 'light';
+  if (kind !== 'video') video.pause();
+  if (kind === 'image') uploadMedia();
+  resize();
+  setStatus(kind==='video' ? `${w}×${h} video · ${video.duration.toFixed(1)}s` : kind==='image' ? `${w}×${h} image` : 'Generated light · seamless loop');
+}
+function loadFile(file){
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  if (file.type.startsWith('image/')){
+    const im = new Image();
+    im.onload = () => setSource('image', im, im.naturalWidth, im.naturalHeight, file.name);
+    im.onerror = () => setStatus('Could not read that image.');
+    im.src = url;
+  } else {
+    video.onloadeddata = () => { setSource('video', video, video.videoWidth, video.videoHeight, file.name); video.play().catch(()=>{}); };
+    video.onerror = () => setStatus('This browser cannot decode that video. Try MP4 (H.264) or WebM.');
+    video.src = url; video.load();
+  }
+}
+$('file').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
+$('backToLight').onclick = () => setSource('light', null, 1080, 1920, 'Optional. The glass works on any footage too.');
+let paused = false;
+$('playpause').onclick = () => {
+  paused = !paused;
+  if (source.kind==='video'){ paused ? video.pause() : video.play(); }
+  $('playpause').textContent = paused ? 'Play' : 'Pause';
+};
+const stage = $('stage');
+['dragenter','dragover'].forEach(ev => stage.addEventListener(ev, e => { e.preventDefault(); stage.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => stage.addEventListener(ev, e => { e.preventDefault(); stage.classList.remove('drag'); }));
+stage.addEventListener('drop', e => {
+  const files = [...e.dataTransfer.files];
+  const fonts = files.filter(f => /\.(ttf|otf|woff2?)$/i.test(f.name));
+  if (fonts.length) loadFonts(fonts); else loadFile(files[0]);
+});
+
+/* ---------------- sizing ---------------- */
+let cover = [1,1];
+function resize(){
+  const [W,H] = P.size.split('x').map(Number);
+  canvas.width = W; canvas.height = H;
+  gl.bindTexture(gl.TEXTURE_2D, lightTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, lightTex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  drawText();
+  const sa = source.kind==='light' ? W/H : source.w/source.h, oa = W/H;
+  cover = sa > oa ? [oa/sa, 1] : [1, sa/oa];
+}
+function uploadMedia(){
+  const el = source.el;
+  if (!el || (el instanceof HTMLVideoElement && el.readyState < 2)) return;
+  gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+  try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, el); } catch(e){}
+}
+
+/* ---------------- render loop ---------------- */
+let last = performance.now(), clock = 0;
+const rgb = h => { const n = parseInt(h.slice(1),16); return [(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]; };
+const MORTAR_COL = [null, '#0b0b0c', '#cfc6b4'];
+
+function frame(now){
+  const dt = Math.min(0.1, (now-last)/1000); last = now;
+  if (!offline){
+    if (!paused) clock += dt;
+    render();
+    if (rec) updateRecProgress();
+  }
+  requestAnimationFrame(frame);
+}
+
+function render(){
+  const W = canvas.width, H = canvas.height;
+  let tex, flip;
+
+  if (source.kind === 'light'){
+    const {pr, U} = lightProg;
+    gl.useProgram(pr);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.viewport(0,0,W,H);
+    gl.uniform2f(U.uRes, W, H);
+    const loop = clock / P.duration;
+    gl.uniform1f(U.uPhase, loop * P.speed * Math.PI * 2);
+    gl.uniform1f(U.uLoop, (loop * P.speed) % 1);
+    gl.uniform1f(U.uSoft, P.soft);
+    gl.uniform1f(U.uAngle, P.angle * Math.PI / 180);
+    gl.uniform1f(U.uSize, P.lsize);
+    gl.uniform1f(U.uBright, P.bright);
+    gl.uniform1f(U.uCount, P.count);
+    gl.uniform1i(U.uStyle, P.style);
+    gl.uniform3fv(U.uColA, rgb(P.colA));
+    gl.uniform3fv(U.uColB, rgb(P.colB));
+    gl.uniform3fv(U.uBg, rgb(P.bg));
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    tex = lightTex; flip = 1;
+  } else {
+    if (source.kind === 'video') uploadMedia();
+    tex = mediaTex; flip = 0;
+  }
+
+  const {pr, U} = glassProg;
+  gl.useProgram(pr);
+  gl.viewport(0,0,W,H);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.uniform1i(U.uTex, 0);
+  gl.uniform2f(U.uRes, W, H);
+  gl.uniform2f(U.uCover, cover[0], cover[1]);
+  gl.uniform1f(U.uFlip, flip);
+  gl.uniform1f(U.uCell, P.cell * W / 1080);   // block size scales with output width
+  gl.uniform1f(U.uZoom, P.zoom);
+  gl.uniform1f(U.uRefract, P.refract);
+  gl.uniform1f(U.uFrost, P.frost * W / 1080);
+  gl.uniform1f(U.uChroma, P.chroma);
+  gl.uniform1f(U.uHighlight, P.highlight);
+  gl.uniform1f(U.uShine, P.shine);
+  gl.uniform1f(U.uSheen, P.sheen);
+  gl.uniform1f(U.uReact, P.react);
+  gl.uniform1f(U.uLight, P.lightAng*Math.PI/180);
+  gl.uniform1f(U.uEdgeDark, P.edgeDark);
+  gl.uniform1f(U.uGrain, P.grain);
+  gl.uniform1f(U.uTime, clock);
+  gl.uniform1f(U.uGap, P.mortar === 0 ? 0 : P.gap);
+  gl.uniform3fv(U.uGrout, rgb(MORTAR_COL[P.mortar] || '#000000'));
+  gl.uniform1f(U.uRim, P.rim);
+  gl.uniform1f(U.uWave, P.wave);
+  gl.uniform1f(U.uWaveScale, P.waveScale);
+  gl.uniform1f(U.uWaveTwist, P.waveTwist);
+  gl.uniform1f(U.uCrease, P.crease);
+  gl.uniform1f(U.uMoldVar, P.moldVar);
+  gl.uniform1i(U.uAA, P.aa ? 1 : 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, maskTex);
+  gl.uniform1i(U.uMask, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, bevTex);
+  gl.uniform1i(U.uBev, 2);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.uniform1f(U.uBlocks, P.blocks ? 1 : 0);
+  gl.uniform1f(U.uBevelPx, Math.max(1, P.bevel * W / 1080));
+  gl.uniform1f(U.uBevelAmt, P.bevel > 0 ? P.bevelAmt : 0);
+  gl.uniform1f(U.uOutLight, P.outLight);
+  gl.uniform1f(U.uEdgeGlow, P.edgeGlow);
+  gl.uniform3fv(U.uOutBg, rgb(P.bg));
+  gl.uniform1f(U.uTransparent, transparentNow ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+let transparentNow = false;
+
+/* ---------------- export ---------------- */
+function setStatus(t){ $('status').textContent = t; }
+function pickMime(){
+  if (typeof MediaRecorder === 'undefined') return null;
+  const mp4 = ['video/mp4;codecs=avc1.640033,mp4a.40.2','video/mp4;codecs=avc1.640028,mp4a.40.2','video/mp4;codecs=avc1','video/mp4'];
+  const webm = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  const order = P.format==='webm' ? webm.concat(mp4) : mp4.concat(webm);
+  return order.find(m => MediaRecorder.isTypeSupported(m)) || null;
+}
+function updateFormatNote(){
+  const m = pickMime();
+  $('fmtNote').textContent = m
+    ? (canOffline() && P.format !== 'webm'
+        ? 'Generated light renders frame by frame to MP4 and loops seamlessly over the length above. Your own videos record in real time, start to end.'
+        : `Exports ${m.split(';')[0].replace('video/','').toUpperCase()} in real time. Generated light loops seamlessly over the length above.`)
+    : 'Video recording is not supported in this browser. PNG export still works.';
+}
+
+let audioCtx = null, audioDest = null;
+function videoAudioTrack(){
+  try {
+    if (!audioCtx){
+      audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const node = audioCtx.createMediaElementSource(video);
+      audioDest = audioCtx.createMediaStreamDestination();
+      node.connect(audioDest); node.connect(audioCtx.destination);
+    }
+    audioCtx.resume();
+    return audioDest.stream.getAudioTracks()[0] || null;
+  } catch(e){ return null; }
+}
+
+// Generated light renders frame by frame with exact timestamps (WebCodecs + MP4 muxer),
+// so the clip is smooth and loops perfectly however slow the computer is.
+let offline = null;
+const canOffline = () => typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined' && typeof Mp4Muxer !== 'undefined';
+async function pickAvc(W, H, fps){
+  for (const codec of ['avc1.640034','avc1.640033','avc1.640028','avc1.4d0034','avc1.42003e']){
+    const cfg = {codec, width:W, height:H, bitrate:+P.bitrate*1e6, framerate:fps};
+    try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) return cfg; } catch(e){}
+  }
+  return null;
+}
+async function renderOffline(){
+  const W = canvas.width, H = canvas.height, fps = +P.fps, total = Math.round(P.duration*fps);
+  const cfg = await pickAvc(W, H, fps);
+  if (!cfg) return false;
+  const muxer = new Mp4Muxer.Muxer({target:new Mp4Muxer.ArrayBufferTarget(), video:{codec:'avc', width:W, height:H, frameRate:fps}, fastStart:'in-memory'});
+  let failed = null;
+  const enc = new VideoEncoder({output:(chunk, meta) => muxer.addVideoChunk(chunk, meta), error:e => { failed = e; }});
+  enc.configure(cfg);
+  offline = {cancel:false};
+  setRecordingUI(true);
+  const saved = clock;
+  for (let i = 0; i < total && !offline.cancel && !failed; i++){
+    clock = i / fps;
+    render();
+    const vf = new VideoFrame(canvas, {timestamp: Math.round(i*1e6/fps), duration: Math.round(1e6/fps)});
+    enc.encode(vf, {keyFrame: i % (fps*2) === 0});
+    vf.close();
+    $('progress').firstElementChild.style.width = ((i+1)/total*100) + '%';
+    $('status').innerHTML = `<span class="rec-dot"></span>Rendering frame ${i+1} / ${total}`;
+    while (enc.encodeQueueSize > 4) await new Promise(r => setTimeout(r, 5));
+    await new Promise(r => setTimeout(r, 0));
+  }
+  const cancelled = offline.cancel;
+  if (!failed && !cancelled){ await enc.flush(); muxer.finalize(); }
+  try { enc.close(); } catch(e){}
+  offline = null; clock = saved;
+  setRecordingUI(false);
+  if (failed){ setStatus('Encoding failed: ' + failed.message); return true; }
+  if (cancelled){ setStatus('Export cancelled.'); return true; }
+  offerFile(new Blob([muxer.target.buffer], {type:'video/mp4'}), `glass-type-${Date.now()}.mp4`);
+  return true;
+}
+function setRecordingUI(on){
+  $('rec').textContent = on ? 'Stop' : 'Export video';
+  $('rec').classList.toggle('primary', !on); $('rec').classList.toggle('danger', on);
+  $('progress').hidden = !on;
+  if (!on) $('progress').firstElementChild.style.width = '0';
+  document.querySelectorAll('#c_size,#c_fps,#c_format,#c_bitrate,#c_duration').forEach(e => e.disabled = on);
+}
+
+let rec = null;
+async function startRecording(){
+  if (source.kind !== 'video' && P.format !== 'webm' && canOffline()){
+    if (await renderOffline()) return;
+  }
+  const mime = pickMime();
+  if (!mime){ setStatus('Recording is not supported in this browser.'); return; }
+  const stream = canvas.captureStream(+P.fps);
+  const isVideo = source.kind === 'video';
+  if (isVideo){ const at = videoAudioTrack(); if (at) stream.addTrack(at); }
+  const chunks = [];
+  const mr = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond:+P.bitrate*1e6, audioBitsPerSecond:192000});
+  mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  mr.onstop = () => {
+    const type = mime.split(';')[0];
+    endRecordingUI();
+    offerFile(new Blob(chunks, {type}), `glass-type-${Date.now()}.${type.includes('mp4')?'mp4':'webm'}`);
+  };
+  rec = {mr, isVideo, start: performance.now(), dur: isVideo ? video.duration : P.duration};
+  paused = false; $('playpause').textContent = 'Pause';
+  if (isVideo){
+    video.loop = false; video.pause();
+    await new Promise(r => { video.onseeked = () => { video.onseeked = null; r(); }; video.currentTime = 0; });
+    video.onended = () => stopRecording();
+    mr.start(250);
+    await video.play();
+  } else {
+    clock = 0;                      // start the loop from its first frame
+    mr.start(250);
+    rec.timer = setTimeout(stopRecording, P.duration*1000);
+  }
+  setRecordingUI(true);
+}
+function stopRecording(){
+  if (!rec) return;
+  clearTimeout(rec.timer);
+  video.onended = null;
+  if (rec.mr.state !== 'inactive') rec.mr.stop();
+  if (rec.isVideo){ video.loop = true; video.play().catch(()=>{}); }
+}
+function endRecordingUI(){
+  rec = null;
+  setRecordingUI(false);
+}
+function updateRecProgress(){
+  const t = rec.isVideo ? video.currentTime : (performance.now()-rec.start)/1000;
+  $('progress').firstElementChild.style.width = Math.min(100, t/rec.dur*100) + '%';
+  $('status').innerHTML = `<span class="rec-dot"></span>Recording ${t.toFixed(1)} / ${rec.dur.toFixed(1)}s`;
+}
+$('rec').onclick = () => { if (offline) offline.cancel = true; else if (rec) stopRecording(); else startRecording(); };
+$('snap').onclick = () => {
+  // a transparent PNG keeps only the letters; the canvas is copied the moment toBlob is called
+  transparentNow = !!P.transparent;
+  render();
+  canvas.toBlob(b => offerFile(b, `glass-type-${Date.now()}.png`), 'image/png');
+  transparentNow = false;
+  render();
+};
+
+// Inside a claude.ai artifact, files go through the viewer's save prompt; standalone, a normal download.
+let lastExport = null;
+async function offerFile(blob, filename){
+  lastExport = {blob, filename};
+  const mb = (blob.size/1048576).toFixed(1);
+  let dl = null;
+  if (window.claude && window.claude.use){ try { dl = await window.claude.use('downloads'); } catch(e){} }
+  if (dl){
+    $('resave').hidden = false;
+    try { await dl.save({filename, data: blob}); setStatus(`Saved ${filename} (${mb} MB)`); }
+    catch(err){
+      setStatus(err && err.code === 'declined' ? 'Save cancelled. Use "Save last export again" to retry.'
+        : `Could not save the file (${err && (err.code || err.message)}).`);
+    }
+  } else {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setStatus(`Saved ${filename} (${mb} MB)`);
+  }
+}
+$('resave').onclick = () => { if (lastExport) offerFile(lastExport.blob, lastExport.filename); };
+
+/* ---------------- go ---------------- */
+buildControls();
+updateFormatNote();
+resize();
+requestAnimationFrame(frame);
+window.__glass = {P, setParam, loadFile, setTime: t => { clock = t; }};
+})();
+</script>
+</body>
+</html>
